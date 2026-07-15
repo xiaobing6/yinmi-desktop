@@ -18,11 +18,21 @@ const COMMON_SCOPE = [
   'docs/feasibility/evidence.schema.json',
   'scripts/feasibility-evidence.mjs',
 ];
+const MEDIA_NEGATIVE_FAMILIES = [
+  'mp2',
+  'aac',
+  'mp4',
+  'ogg',
+  'opus',
+  'wav',
+  'truncated',
+];
 
 const withCommon = (paths) => [...new Set([...COMMON_SCOPE, ...paths])].sort();
 
 const TASK_4_SCOPE = [
   'package.json',
+  'pnpm-lock.yaml',
   'scripts/verify-config.mjs',
   'scripts/verify-default-artifacts.mjs',
   'src/App.svelte',
@@ -201,12 +211,12 @@ function platformsFor(gateId) {
         'x86_64',
       ),
       platform(
-        'windows-11-webview2-current-x64',
+        'windows-11-x64',
         'Windows 11 24H2 / WebView2 current',
         'x86_64',
       ),
-      platform('macos-13.3-intel', 'macOS 13.3', 'x86_64'),
-      platform('macos-current-arm', 'macOS 15', 'aarch64'),
+      platform('macos-13-intel', 'macOS 13.3', 'x86_64'),
+      platform('macos-current-arm64', 'macOS 15', 'aarch64'),
     ];
   }
   if (gateId === 'atomic-commit') {
@@ -288,7 +298,7 @@ function checksFor(gateId, testedCommit) {
       return {
         mp3RoundTrip: true,
         flacRoundTrip: true,
-        negativeFamiliesRejected: ['mp2', 'truncated-id3', 'truncated-flac'],
+        negativeFamiliesRejected: [...MEDIA_NEGATIVE_FAMILIES],
       };
     case 'updater-exit-barrier':
       return {
@@ -651,6 +661,124 @@ test('build rejects absolute paths and private-key material anywhere in raw inpu
       /private key|secret/i,
     );
   });
+});
+
+test('build rejects an absolute local path hidden in an object key', async () => {
+  const fixture = await createRepository();
+  fixture.raw.checks['C:\\Users\\example\\private\\probe.mjs'] = true;
+  await assert.rejects(
+    buildEvidence(fixture.raw, {
+      cwd: fixture.cwd,
+      markdownPath: fixture.markdownPath,
+    }),
+    /absolute path|local path/i,
+  );
+});
+
+test('build rejects private-key material hidden in an object key', async () => {
+  const fixture = await createRepository();
+  fixture.raw.checks['-----BEGIN OPENSSH PRIVATE KEY-----'] = true;
+  await assert.rejects(
+    buildEvidence(fixture.raw, {
+      cwd: fixture.cwd,
+      markdownPath: fixture.markdownPath,
+    }),
+    /private key|secret/i,
+  );
+});
+
+test('media-containers rejects truncated aliases in place of the planned family', async () => {
+  const fixture = await createRepository('media-containers');
+  fixture.raw.checks.negativeFamiliesRejected = [
+    'mp2',
+    'aac',
+    'mp4',
+    'ogg',
+    'opus',
+    'wav',
+    'truncated-id3',
+    'truncated-flac',
+  ];
+  await assert.rejects(
+    buildEvidence(fixture.raw, {
+      cwd: fixture.cwd,
+      markdownPath: fixture.markdownPath,
+    }),
+    /negativeFamiliesRejected|negative famil|reject/i,
+  );
+});
+
+test('media-containers accepts the exact planned negative-family set', async () => {
+  const fixture = await createRepository('media-containers');
+  const evidence = await buildEvidence(fixture.raw, {
+    cwd: fixture.cwd,
+    markdownPath: fixture.markdownPath,
+  });
+  assert.deepEqual(
+    evidence.checks.negativeFamiliesRejected,
+    MEDIA_NEGATIVE_FAMILIES,
+  );
+});
+
+test('media-containers rejects a string masquerading as negative families', async () => {
+  const fixture = await createRepository('media-containers');
+  fixture.raw.checks.negativeFamiliesRejected =
+    'mp2,truncated-id3,truncated-flac';
+  await assert.rejects(
+    buildEvidence(fixture.raw, {
+      cwd: fixture.cwd,
+      markdownPath: fixture.markdownPath,
+    }),
+    /negativeFamiliesRejected|array|unique strings/i,
+  );
+});
+
+test('media-containers rejects duplicate negative families', async () => {
+  const fixture = await createRepository('media-containers');
+  fixture.raw.checks.negativeFamiliesRejected = [
+    'mp2',
+    'truncated-id3',
+    'truncated-flac',
+    'mp2',
+  ];
+  await assert.rejects(
+    buildEvidence(fixture.raw, {
+      cwd: fixture.cwd,
+      markdownPath: fixture.markdownPath,
+    }),
+    /negativeFamiliesRejected|duplicate|unique strings/i,
+  );
+});
+
+test('signature-webview accepts the exact canonical Task 10 platform IDs', async () => {
+  const { cwd, evidence } = await buildFixture('signature-webview');
+  assert.deepEqual(evidence.platforms.map(({ id }) => id).sort(), [
+    'macos-13-intel',
+    'macos-current-arm64',
+    'windows-10-webview2-111-x64',
+    'windows-11-x64',
+  ]);
+  assert.equal(await validateEvidence(evidence, { cwd }), true);
+});
+
+test('signature-webview rejects legacy platform ID aliases', async () => {
+  const fixture = await createRepository('signature-webview');
+  fixture.raw.platforms[1].id = 'windows-11-webview2-current-x64';
+  fixture.raw.platforms[2].id = 'macos-13.3-intel';
+  fixture.raw.platforms[3].id = 'macos-current-arm';
+  fixture.raw.checks.runtimeModes = Object.fromEntries(
+    fixture.raw.platforms.map(({ id }) => [id, `recorded:${id}`]),
+  );
+  fixture.raw.checks.filterModes = Object.fromEntries(
+    fixture.raw.platforms.map(({ id }) => [id, 'official-only']),
+  );
+  await assert.rejects(
+    buildEvidence(fixture.raw, {
+      cwd: fixture.cwd,
+      markdownPath: fixture.markdownPath,
+    }),
+    /signature-webview platforms|required.*platform|platform.*match/i,
+  );
 });
 
 const INVALID_GATE_CHECK = {

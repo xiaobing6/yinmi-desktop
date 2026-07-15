@@ -177,6 +177,7 @@ function assertSafeValue(value, label = 'evidence', seen = new Set()) {
     );
   } else {
     for (const [key, item] of Object.entries(value)) {
+      assertSafeString(key, `${label} object key`);
       assertSafeValue(item, `${label}.${key}`, seen);
     }
   }
@@ -470,9 +471,9 @@ function validateGatePass(gateId, platforms, checks, testedCommit) {
     case 'signature-webview': {
       const expectedIds = [
         'windows-10-webview2-111-x64',
-        'windows-11-webview2-current-x64',
-        'macos-13.3-intel',
-        'macos-current-arm',
+        'windows-11-x64',
+        'macos-13-intel',
+        'macos-current-arm64',
       ];
       const ids = platforms.map(({ id }) => id).sort();
       assertSameStrings(
@@ -534,10 +535,26 @@ function validateGatePass(gateId, platforms, checks, testedCommit) {
     case 'media-containers':
       requireDesktopTriplet(platforms, gateId);
       assertTrueChecks(checks, ['mp3RoundTrip', 'flacRoundTrip'], gateId);
-      for (const family of ['mp2', 'truncated-id3', 'truncated-flac']) {
-        if (!checks.negativeFamiliesRejected?.includes(family)) {
-          fail(`media-containers checks must reject ${family}`);
-        }
+      {
+        const expectedFamilies = [
+          'mp2',
+          'aac',
+          'mp4',
+          'ogg',
+          'opus',
+          'wav',
+          'truncated',
+        ];
+        assertUniqueStringArray(
+          checks.negativeFamiliesRejected,
+          expectedFamilies.length,
+          'media-containers checks.negativeFamiliesRejected',
+        );
+        assertSameStrings(
+          [...checks.negativeFamiliesRejected].sort(),
+          [...expectedFamilies].sort(),
+          'media-containers checks.negativeFamiliesRejected',
+        );
       }
       break;
     case 'updater-exit-barrier':
