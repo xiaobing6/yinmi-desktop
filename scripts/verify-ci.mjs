@@ -40,12 +40,13 @@ assert.deepEqual(platform.jobs.platform_macos.needs, [
 ]);
 assert.equal(platform.jobs.platform_macos.if, 'always()');
 
-for (const job of [
-  quality.jobs.quality,
+const nativeJobs = [
   platform.jobs['platform-windows'],
   platform.jobs.platform_macos_intel,
   platform.jobs.platform_macos_arm,
-]) {
+];
+
+for (const job of [quality.jobs.quality, ...nativeJobs]) {
   const checkout = job.steps.find(
     (step) => step.uses === 'actions/checkout@v6',
   );
@@ -53,6 +54,22 @@ for (const job of [
     checkout?.with?.['fetch-depth'],
     0,
     `${job.name} must fetch full history`,
+  );
+}
+
+for (const job of nativeJobs) {
+  const buildIndex = job.steps.findIndex((step) => step.run === 'pnpm build');
+  const cargoTestIndex = job.steps.findIndex(
+    (step) =>
+      step.run ===
+      'cargo test --manifest-path src-tauri/Cargo.toml --all-targets',
+  );
+  assert.ok(buildIndex >= 0, `${job.name} must build the frontend`);
+  assert.ok(cargoTestIndex >= 0, `${job.name} must run native Cargo tests`);
+  assert.equal(
+    buildIndex,
+    cargoTestIndex - 1,
+    `${job.name} must build the frontend immediately before native Cargo tests`,
   );
 }
 

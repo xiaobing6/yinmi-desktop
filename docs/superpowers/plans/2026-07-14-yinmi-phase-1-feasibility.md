@@ -1025,6 +1025,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
       - run: pnpm tauri build --debug --no-bundle --target x86_64-pc-windows-msvc
 
@@ -1050,6 +1051,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
       - run: cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-apple-darwin
       - run: pnpm tauri build --debug --no-bundle --target x86_64-apple-darwin
@@ -1076,6 +1078,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
       - run: cargo check --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
       - run: cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-apple-darwin
