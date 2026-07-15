@@ -6,13 +6,14 @@
 
 **Architecture:** 第一阶段只建立最小产品壳、纯函数契约模块、受 Cargo feature 与 Vite mode 双重隔离的可行性探针，以及 Windows/macOS 基础 CI。可复用的协议代码进入 `music`，未验证的平台机制全部进入 `feasibility`；原始探针输出只进入被忽略的 `artifacts/feasibility/`，仓库仅提交脱敏结论、ADR 和自动门控清单。
 
-**Tech Stack:** Node.js 24 LTS、pnpm 11.7.0、Svelte 5.56.5、TypeScript 7.0.2、Vite 8.1.4、Tailwind CSS 4.3.2、Vitest 4.1.10、Rust 1.97.0、Tauri 2、Tokio、Reqwest/rustls、Serde、Thiserror、Lofty、GitHub Actions。
+**Tech Stack:** Node.js 24 LTS、pnpm 11.7.0、Svelte 5.56.5、TypeScript 6.0.3、Vite 8.1.4、Tailwind CSS 4.3.2、Vitest 4.1.10、Rust 1.97.0、Tauri 2、Tokio、Reqwest/rustls、Serde、Thiserror、Lofty、GitHub Actions。
 
 ## Global Constraints
 
 - 设计来源固定为 `docs/plans/2026-07-14-music-desktop-design.md`，基线提交为 `5893d4340a4815677da79f74223642ac855519e7`；任何改变产品行为、安全不变量、外部契约或发布结果的发现都必须先回修设计。
 - 在独立 worktree 的 `phase1/<slug>` 分支中执行，不直接在 `master` 上开发；开始执行时先使用 `superpowers:using-git-worktrees`。该分支前缀也是平台 CI 获取实现分支原始提交 SHA 的固定触发契约。
 - Node.js 使用 24 LTS，`packageManager` 固定 `pnpm@11.7.0` 并提交 `pnpm-lock.yaml`。
+- TypeScript 固定为 `6.0.3`，与 `typescript-eslint@8.64.0` 的官方支持范围兼容；在 ESLint 工具链正式支持 TypeScript 7 前不得升至 7.x。
 - Rust 使用 1.97.0，提交 `rust-toolchain.toml` 与 `Cargo.lock`；Tauri 使用主版本 2。
 - 用户可见名称与日志目录名为“音觅”，工程名为 `yinmi`，Bundle Identifier 为 `io.github.xiaobing6.yinmi`，首版版本为 `0.1.0`。
 - Windows 支持 Windows 10 22H2/Windows 11 x64 与 WebView2 `111.0.1661.0` 以上；macOS 支持 13.3 以上 Intel/Apple Silicon，最终产物为 Universal。
@@ -362,7 +363,7 @@ Create `package.json` with exact plan-date frontend versions; do not add unused 
     "svelte-check": "4.7.2",
     "tailwindcss": "4.3.2",
     "tslib": "2.8.1",
-    "typescript": "7.0.2",
+    "typescript": "6.0.3",
     "typescript-eslint": "8.64.0",
     "vite": "8.1.4",
     "vitest": "4.1.10",
