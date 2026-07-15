@@ -1,0 +1,35 @@
+[
+  {
+    "id": "track-1",
+    "name": "歌曲一",
+    "artist": "歌手甲",
+    "album": null,
+    "source": "netease",
+    "url_id": "url-1",
+    "pic_id": "pic-1",
+    "lyric_id": "lyric-1",
+    "extra_data": { "duration": "123", "has_hires": true }
+  },
+  {
+    "id": 9007199254740991,
+    "name": "歌曲二",
+    "artist": ["歌手乙", "歌手丙"],
+    "album": "专辑",
+    "source": "netease",
+    "extra_data": { "duration": 10 }
+  },
+  {
+    "id": null,
+    "name": "坏记录",
+    "artist": [],
+    "album": null,
+    "source": "netease"
+  },
+  {
+    "id": "bad-mixed-artist",
+    "name": "混合艺人类型",
+    "artist": ["歌手丁", 7],
+    "album": null,
+    "source": "netease"
+  }
+]
