@@ -17,7 +17,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify:config": "node scripts/verify-config.mjs",
-    "quality": "pnpm format:check && pnpm lint && pnpm check && pnpm test && pnpm build && pnpm verify:config",
+    "verify:ci": "node scripts/verify-ci.mjs",
+    "test:evidence": "node --test scripts/feasibility-evidence.test.mjs",
+    "verify:evidence": "node scripts/feasibility-evidence.mjs check-existing docs/feasibility",
+    "quality": "pnpm format:check && pnpm lint && pnpm check && pnpm test && pnpm build && pnpm verify:config && pnpm verify:ci && pnpm test:evidence",
     "tauri": "tauri"
   },
   "dependencies": {

@@ -1,0 +1,101 @@
+name: platform-smoke
+
+on:
+  push:
+    branches: [master, 'phase1/**']
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  platform-windows:
+    name: platform-windows
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: pnpm install --frozen-lockfile
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+      - run: pnpm tauri build --debug --no-bundle --target x86_64-pc-windows-msvc
+
+  platform_macos_intel:
+    name: platform-macos-intel
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          targets: x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: pnpm install --frozen-lockfile
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-apple-darwin
+      - run: pnpm tauri build --debug --no-bundle --target x86_64-apple-darwin
+
+  platform_macos_arm:
+    name: platform-macos-arm
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: pnpm install --frozen-lockfile
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-apple-darwin
+      - run: pnpm tauri build --debug --no-bundle --target universal-apple-darwin
+      - run: lipo -archs src-tauri/target/universal-apple-darwin/debug/yinmi
+
+  platform_macos:
+    name: platform-macos
+    if: always()
+    needs: [platform_macos_intel, platform_macos_arm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both macOS architectures
+        run: |
+          test "${{ needs.platform_macos_intel.result }}" = "success"
+          test "${{ needs.platform_macos_arm.result }}" = "success"

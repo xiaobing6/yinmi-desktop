@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yinmi.invalid/schemas/feasibility-evidence.schema.json",
+  "title": "Yinmi Phase 1 feasibility evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "gateId",
+    "status",
+    "designCommit",
+    "testedCommit",
+    "testedAt",
+    "scopeFiles",
+    "scopeSha256",
+    "markdownPath",
+    "markdownSha256",
+    "decisions",
+    "platforms",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "gateId": {
+      "enum": [
+        "atomic-commit",
+        "gd-contract-pagination",
+        "media-containers",
+        "network-policy",
+        "signature-webview",
+        "toolchain-ci",
+        "updater-exit-barrier"
+      ]
+    },
+    "status": {
+      "enum": ["pass", "design-change-required", "blocked"]
+    },
+    "designCommit": {
+      "const": "5893d4340a4815677da79f74223642ac855519e7"
+    },
+    "testedCommit": { "$ref": "#/$defs/sha1" },
+    "testedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "scopeFiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/repositoryPath" }
+    },
+    "scopeSha256": { "$ref": "#/$defs/sha256" },
+    "markdownPath": { "$ref": "#/$defs/repositoryPath" },
+    "markdownSha256": { "$ref": "#/$defs/sha256" },
+    "decisions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "$ref": "#/$defs/repositoryPath" },
+          "sha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "osVersion",
+          "arch",
+          "command",
+          "exitCode",
+          "runUrl"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "osVersion": { "type": "string", "minLength": 1 },
+          "arch": { "type": "string", "minLength": 1 },
+          "command": { "type": "string", "minLength": 1 },
+          "exitCode": { "type": "integer" },
+          "runUrl": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "string", "format": "uri", "pattern": "^https://" }
+            ]
+          }
+        }
+      }
+    },
+    "checks": { "type": "object" }
+  },
+  "$defs": {
+    "repositoryPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?/)(?!.*//).+$"
+    },
+    "sha1": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}
