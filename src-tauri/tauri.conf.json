@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "音觅",
+  "version": "0.1.0",
+  "identifier": "io.github.xiaobing6.yinmi",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "音觅",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 480
+      }
+    ],
+    "security": {
+      "capabilities": ["main-capability"],
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "windows": { "webviewInstallMode": { "type": "embedBootstrapper" } },
+    "macOS": { "minimumSystemVersion": "13.3" }
+  }
+}

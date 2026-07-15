@@ -1,5 +1,3 @@
-# 音觅（Yinmi）
+# 音觅
 
-面向 Windows 与 macOS 的音乐搜索和顺序下载桌面应用，使用 Tauri 2、Svelte 5 与 Rust 构建。
-
-当前阶段：产品与技术设计已完成，准备进入实施计划。详见[设计规格](docs/plans/2026-07-14-music-desktop-design.md)。
+Phase 1 feasibility validation is in progress against design commit `5893d4340a4815677da79f74223642ac855519e7`. Product feature implementation beyond the Phase 1 gate is not yet authorized.

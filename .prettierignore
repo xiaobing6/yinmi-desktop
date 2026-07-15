@@ -1,0 +1,5 @@
+docs/
+README.md
+artifacts/
+src-tauri/target/
+dist/
