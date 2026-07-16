@@ -1,8 +1,8 @@
 use yinmi_lib::music::contract::{
     AudioAvailability, AudioUnavailableReason, ContractError, EncodedComponent, GdOperation,
-    GdSource, PaginationDecision, PaginationProbe, ParsedSearchPage, ProbeSong, SearchOperation,
-    SignatureValue, StopReason, parse_audio_response, parse_lyric_response, parse_picture_response,
-    parse_search_page, render_form_body,
+    GdSource, PaginationDecision, PaginationProbe, ParsedSearchPage, ProbeSong, SearchCount,
+    SearchOperation, SignatureValue, StopReason, parse_audio_response, parse_lyric_response,
+    parse_picture_response, parse_search_page, render_form_body,
 };
 
 const SIG: &str = "fixture-signature";
@@ -17,7 +17,7 @@ fn renders_six_official_bodies_in_exact_order() {
         (
             GdOperation::Search {
                 operation: SearchOperation::Track,
-                count: 20,
+                count: SearchCount::try_from(20).unwrap(),
                 source: GdSource::NeteaseMusic,
                 page: 1,
                 name: name.clone(),
@@ -27,7 +27,7 @@ fn renders_six_official_bodies_in_exact_order() {
         (
             GdOperation::Search {
                 operation: SearchOperation::Album,
-                count: 20,
+                count: SearchCount::try_from(20).unwrap(),
                 source: GdSource::NeteaseMusic,
                 page: 1,
                 name: name.clone(),
@@ -37,7 +37,7 @@ fn renders_six_official_bodies_in_exact_order() {
         (
             GdOperation::Search {
                 operation: SearchOperation::Playlist,
-                count: 20,
+                count: SearchCount::try_from(20).unwrap(),
                 source: GdSource::NeteaseMusic,
                 page: 1,
                 name,
@@ -108,7 +108,7 @@ fn exposes_the_encoded_signature_input_for_every_operation() {
     let operations = [
         GdOperation::Search {
             operation: SearchOperation::Track,
-            count: 20,
+            count: SearchCount::try_from(20).unwrap(),
             source: GdSource::NeteaseMusic,
             page: 1,
             name: encoded.clone(),
@@ -170,6 +170,21 @@ fn maps_all_registered_sources_and_pins_the_default() {
         assert_eq!(source.wire_value(), wire_value);
     }
     assert_eq!(GdSource::DEFAULT, GdSource::NeteaseMusic);
+}
+
+#[test]
+fn enforces_search_count_bounds() {
+    assert_eq!(SearchCount::DEFAULT.get(), 20);
+    assert_eq!(SearchCount::try_from(1).unwrap().get(), 1);
+    assert_eq!(SearchCount::try_from(1_000).unwrap().get(), 1_000);
+    assert!(matches!(
+        SearchCount::try_from(0),
+        Err(ContractError::InvalidSearchCount)
+    ));
+    assert!(matches!(
+        SearchCount::try_from(1_001),
+        Err(ContractError::InvalidSearchCount)
+    ));
 }
 
 #[test]

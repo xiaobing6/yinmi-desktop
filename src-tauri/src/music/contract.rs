@@ -1,4 +1,7 @@
-use std::{collections::HashSet, fmt::Write};
+use std::{
+    collections::HashSet,
+    fmt::{self, Write},
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -124,11 +127,41 @@ impl GdSource {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SearchCount(u16);
+
+impl SearchCount {
+    pub const DEFAULT: Self = Self(20);
+    pub const MIN: u16 = 1;
+    pub const MAX: u16 = 1_000;
+
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl TryFrom<u16> for SearchCount {
+    type Error = ContractError;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        (Self::MIN..=Self::MAX)
+            .contains(&value)
+            .then_some(Self(value))
+            .ok_or(ContractError::InvalidSearchCount)
+    }
+}
+
+impl fmt::Display for SearchCount {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum GdOperation {
     Search {
         operation: SearchOperation,
-        count: u16,
+        count: SearchCount,
         source: GdSource,
         page: u16,
         name: EncodedComponent,
@@ -199,6 +232,8 @@ pub fn render_form_body(operation: &GdOperation, signature: &SignatureValue) -> 
 pub enum ContractError {
     #[error("invalid signature")]
     InvalidSignature,
+    #[error("search count must be between 1 and 1000")]
+    InvalidSearchCount,
     #[error("top-level response is not an array")]
     InvalidTopLevel,
     #[error("non-empty response contained no valid songs")]
