@@ -143,6 +143,69 @@ test('source verifier rejects every forbidden managed/IPC/unsafe construct', asy
   }
 });
 
+test('source verifier rejects unsafe Send and Sync trait aliases', async (t) => {
+  const aliases = [
+    [
+      'std Send alias',
+      `
+        use std::marker::Send as ThreadTransfer;
+        unsafe impl ThreadTransfer for Guard {}
+      `,
+    ],
+    [
+      'core Sync alias',
+      `
+        use core::marker::Sync as ThreadShare;
+        unsafe impl ThreadShare for Guard {}
+      `,
+    ],
+    [
+      'grouped Send alias',
+      `
+        use core::marker::{Send as GroupTransfer, Sync};
+        unsafe impl GroupTransfer for Guard {}
+      `,
+    ],
+    [
+      'grouped Sync alias',
+      `
+        use std::marker::{Send, Sync as GroupShare};
+        unsafe impl GroupShare for Guard {}
+      `,
+    ],
+    [
+      'raw identifier alias',
+      `
+        use core::marker::Send as r#ThreadTransfer;
+        unsafe impl r#ThreadTransfer for Guard {}
+      `,
+    ],
+    [
+      'Unicode alias',
+      `
+        use core::marker::Sync as 线程共享;
+        unsafe impl 线程共享 for Guard {}
+      `,
+    ],
+  ];
+  for (const [name, snippet] of aliases) {
+    await t.test(name, () => {
+      const sources = validSources();
+      const path = 'src-tauri/src/feasibility/signature_webview.rs';
+      sources.set(path, `${sources.get(path)}\n${snippet}\n`);
+      const diagnostics = inspectSignatureHostSources(sources);
+      assert.equal(
+        diagnostics.some(
+          (diagnostic) =>
+            diagnostic.includes(path) && diagnostic.includes('unsafe impl'),
+        ),
+        true,
+        diagnostics.join('\n'),
+      );
+    });
+  }
+});
+
 test('source verifier ignores forbidden-looking comments and strings', () => {
   const sources = validSources();
   const path = 'src-tauri/src/feasibility/signature_webview.rs';

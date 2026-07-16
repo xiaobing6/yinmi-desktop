@@ -45,12 +45,8 @@ const FORBIDDEN_PATTERNS = [
     pattern: /\b(?:r#)?with_asynchronous_custom_protocol\b/,
   },
   {
-    label: 'unsafe impl Send',
-    pattern: /\bunsafe\s+impl\b[\s\S]*?\b(?:r#)?Send\b\s+for\b/,
-  },
-  {
-    label: 'unsafe impl Sync',
-    pattern: /\bunsafe\s+impl\b[\s\S]*?\b(?:r#)?Sync\b\s+for\b/,
+    label: 'unsafe impl',
+    pattern: /\bunsafe\s+impl\b/,
   },
 ];
 
