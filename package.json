@@ -19,8 +19,10 @@
     "verify:config": "node scripts/verify-config.mjs",
     "verify:ci": "node scripts/verify-ci.mjs",
     "test:evidence": "node --test scripts/feasibility-evidence.test.mjs",
+    "test:signature-host": "node --test scripts/verify-signature-host.test.mjs",
     "verify:evidence": "node scripts/feasibility-evidence.mjs check-existing docs/feasibility",
-    "quality": "pnpm format:check && pnpm lint && pnpm check && pnpm test && pnpm build && pnpm verify:config && pnpm verify:ci && pnpm test:evidence",
+    "verify:signature-host": "node scripts/verify-signature-host.mjs",
+    "quality": "pnpm format:check && pnpm lint && pnpm check && pnpm test && pnpm build && pnpm verify:config && pnpm verify:ci && pnpm test:evidence && pnpm test:signature-host",
     "tauri": "tauri"
   },
   "dependencies": {

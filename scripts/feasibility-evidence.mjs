@@ -14,7 +14,8 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-const DESIGN_COMMIT = '5893d4340a4815677da79f74223642ac855519e7';
+const SCHEMA_VERSION = 2;
+const DESIGN_COMMIT = '782b30d8eb1075cce708ddef878cd236d2fa7dc2';
 const MANIFEST_PATH = 'docs/feasibility/evidence-scopes.json';
 const COMMON_SCOPE = [
   'docs/feasibility/evidence-scopes.json',
@@ -76,6 +77,143 @@ const PLATFORM_KEYS = [
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
+const SIGNATURE_PLATFORM_IDS = [
+  'windows-10-webview2-111-x64',
+  'windows-11-x64',
+  'macos-13-intel',
+  'macos-current-arm64',
+];
+const RESOURCE_VECTORS = [
+  'document',
+  'iframe',
+  'script',
+  'style',
+  'image',
+  'media',
+  'fetch',
+  'xhr',
+  'worker',
+  'service_worker',
+  'websocket',
+  'sse',
+  'beacon',
+  'redirect',
+  'popup',
+  'download',
+  'top_level_data',
+  'top_level_blob',
+  'top_level_file',
+  'top_level_custom_protocol',
+];
+const RESOURCE_REQUEST_VECTORS = new Set(RESOURCE_VECTORS.slice(0, 14));
+const RESOURCE_RESULT_KEYS = [
+  'runtimeAttempted',
+  'availabilityOutcome',
+  'deterministicBarrierSeamCovered',
+  'expectedBarrier',
+  'enforcedBarrier',
+  'barrierEvidenceMode',
+  'counterfactualServerHits',
+  'allowedRedirectHopHits',
+  'serverHits',
+];
+const SIGNATURE_TRUE_CHECKS = [
+  'rawWryHost',
+  'tauriGlobalsAbsent',
+  'applicationInitializationScriptsAbsent',
+  'applicationIpcHandlerAbsent',
+  'inertWryShimPresent',
+  'hiddenIpcCanaryDeltaZero',
+  'hiddenIpcProducedNoResponse',
+  'appStateUnchanged',
+  'capabilityMatchAbsent',
+  'policyInstalledBeforeFirstNetworkNavigation',
+  'officialFinishedBeforePolling',
+  'officialOnlyOrigins',
+  'storageNonPersistent',
+  'timeoutCheck',
+  'retryCheck',
+  'policyFaultInvalidatesInstance',
+  'lateCallbackIsolated',
+  'destroyConfirmedBeforeRetry',
+  'resourcePolicyCleanupAcknowledged',
+  'policyTombstonesEmptyBeforeExit',
+  'lifecycleNoMonotonicGrowth',
+  'noOrphanHostWindows',
+  'visibleWindowLeakAbsent',
+  'unexpectedActivationAbsent',
+  'ordinaryExitCleanupAcknowledged',
+];
+const SIGNATURE_FALSE_CHECKS = [
+  'usesTauriManagedWebView',
+  'newInstanceStorageRecovered',
+  'restartStorageRecovered',
+];
+const SIGNATURE_CHECK_KEYS = [
+  'runtimeModes',
+  'resourcePolicyModes',
+  'webviewRuntimeVersions',
+  'resourceVectorsCovered',
+  ...SIGNATURE_TRUE_CHECKS,
+  ...SIGNATURE_FALSE_CHECKS,
+  'crossOriginCanaryServerHits',
+  'byPlatform',
+];
+const SIGNATURE_PLATFORM_ROW_KEYS = [
+  'hostPlatform',
+  'hostArch',
+  'osVersion',
+  'binaryTargetOs',
+  'binaryTargetArch',
+  'translatedProcess',
+  'webviewRuntimeVersion',
+  'runtimeMode',
+  'resourcePolicyMode',
+  'strongSourceKindsInterfaceAvailable',
+  ...SIGNATURE_TRUE_CHECKS,
+  ...SIGNATURE_FALSE_CHECKS,
+  'crossOriginCanaryServerHits',
+  'blockedCanaryAttempts',
+  'resourceVectorResults',
+];
+const RESOURCE_POLICY_MODES = [
+  'webview2-22-all-source-kinds',
+  'webview2-legacy-all-contexts-candidate',
+  'wk-content-rule-list-exact-origin',
+];
+const SEARCH_DEFAULTS_AND_BOUNDS = {
+  defaultInternalCode: 'netease_music',
+  defaultDisplayName: '网易云音乐',
+  defaultWireValue: 'netease',
+  defaultCount: 20,
+  minimumCount: 1,
+  maximumCount: 1000,
+  boundaryTestsPassed: true,
+  singleCount1000RequestedCount: 1000,
+  singleCount1000ApiRequests: 1,
+};
+const SEARCH_CONTRACT_TEST_RESULT = {
+  defaultInternalCode: 'netease_music',
+  defaultDisplayName: '网易云音乐',
+  defaultWireValue: 'netease',
+  defaultCount: 20,
+  minimumCount: 1,
+  maximumCount: 1000,
+  boundaryTestsPassed: true,
+};
+const SINGLE_COUNT_1000_LIVE_CASE = {
+  requestedCount: 1000,
+  apiRequests: 1,
+};
+const GD_COMMON_CHECK_KEYS = [
+  'bodyFixtures',
+  'strictMixedRecordParser',
+  'rejects429',
+  'rejectsOtherNon2xx',
+  'rejectsOversizeBody',
+  'liveCases',
+  'pageLimit',
+];
 
 function fail(message) {
   throw new Error(message);
@@ -287,7 +425,9 @@ async function assertScopeMatchesCommit(cwd, testedCommit, scopeFiles) {
 }
 
 function assertCoreFields(value) {
-  if (value.schemaVersion !== 1) fail('schemaVersion must equal 1');
+  if (value.schemaVersion !== SCHEMA_VERSION) {
+    fail(`schemaVersion must equal ${SCHEMA_VERSION}`);
+  }
   if (!COMMON_GATES.includes(value.gateId)) {
     fail(`unsupported common evidence gateId: ${value.gateId}`);
   }
@@ -405,6 +545,12 @@ function assertTrueChecks(checks, keys, gateId) {
   }
 }
 
+function assertFalseChecks(checks, keys, gateId) {
+  for (const key of keys) {
+    if (checks[key] !== false) fail(`${gateId} checks.${key} must be false`);
+  }
+}
+
 function assertUniqueStringArray(value, count, label) {
   if (
     !Array.isArray(value) ||
@@ -413,6 +559,426 @@ function assertUniqueStringArray(value, count, label) {
     new Set(value).size !== value.length
   ) {
     fail(`${label} must contain exactly ${count} unique nonempty strings`);
+  }
+}
+
+function assertExactStringSet(value, expected, label) {
+  assertUniqueStringArray(value, expected.length, label);
+  const actual = [...value].sort();
+  const wanted = [...expected].sort();
+  if (actual.some((entry, index) => entry !== wanted[index])) {
+    fail(`${label} must equal the fixed set: ${wanted.join(', ')}`);
+  }
+}
+
+function assertExactValueObject(value, expected, label) {
+  assertExactKeys(value, Object.keys(expected), label);
+  for (const [key, wanted] of Object.entries(expected)) {
+    if (value[key] !== wanted) {
+      fail(`${label}.${key} must equal ${JSON.stringify(wanted)}`);
+    }
+  }
+}
+
+function assertFrozenVersion(value, label) {
+  assertNonemptyString(value, label);
+  if (
+    value !== value.trim() ||
+    /^(?:current|unknown|unavailable|recorded(?::.*)?)$/i.test(value)
+  ) {
+    fail(`${label} must be an exact frozen version`);
+  }
+}
+
+function expectedBarrier(platformId, vector) {
+  if (RESOURCE_REQUEST_VECTORS.has(vector)) {
+    return platformId.startsWith('windows-')
+      ? 'webview2-web-resource-requested'
+      : 'wk-content-rule-list';
+  }
+  if (vector === 'popup') return 'new-window-handler';
+  if (vector === 'download') return 'download-handler';
+  return 'navigation-handler';
+}
+
+function validateResourceVectorResult(platformId, vector, result) {
+  const label = `checks.byPlatform.${platformId}.resourceVectorResults.${vector}`;
+  assertExactKeys(result, RESOURCE_RESULT_KEYS, label);
+  if (result.runtimeAttempted !== true) {
+    fail(`${label}.runtimeAttempted must be true`);
+  }
+  if (result.deterministicBarrierSeamCovered !== true) {
+    fail(`${label}.deterministicBarrierSeamCovered must be true`);
+  }
+
+  const absentServiceWorker =
+    vector === 'service_worker' &&
+    result.availabilityOutcome === 'service-worker-api-absent';
+  if (result.availabilityOutcome !== 'available' && !absentServiceWorker) {
+    fail(
+      `${label}.availabilityOutcome must be available except for the fixed service-worker API absence`,
+    );
+  }
+
+  const barrier = expectedBarrier(platformId, vector);
+  if (result.expectedBarrier !== barrier) {
+    fail(`${label}.expectedBarrier must equal ${barrier}`);
+  }
+  if (result.enforcedBarrier !== barrier) {
+    fail(`${label}.enforcedBarrier must equal its expected barrier`);
+  }
+  if (result.serverHits !== 0) {
+    fail(`${label}.serverHits must be exactly 0`);
+  }
+  const redirectHops = vector === 'redirect' ? 2 : 0;
+  if (result.allowedRedirectHopHits !== redirectHops) {
+    fail(`${label}.allowedRedirectHopHits must equal ${redirectHops}`);
+  }
+
+  if (absentServiceWorker) {
+    if (result.barrierEvidenceMode !== 'deterministic-seam-only') {
+      fail(`${label}.barrierEvidenceMode must be deterministic-seam-only`);
+    }
+    if (result.counterfactualServerHits !== null) {
+      fail(
+        `${label}.counterfactualServerHits must be null when the API is absent`,
+      );
+    }
+    return result.serverHits;
+  }
+
+  if (RESOURCE_REQUEST_VECTORS.has(vector)) {
+    if (platformId.startsWith('windows-')) {
+      if (result.barrierEvidenceMode !== 'native-callback') {
+        fail(`${label}.barrierEvidenceMode must be native-callback`);
+      }
+      if (result.counterfactualServerHits !== null) {
+        fail(`${label}.counterfactualServerHits must be null on Windows`);
+      }
+    } else {
+      if (result.barrierEvidenceMode !== 'paired-counterfactual') {
+        fail(`${label}.barrierEvidenceMode must be paired-counterfactual`);
+      }
+      if (
+        !Number.isInteger(result.counterfactualServerHits) ||
+        result.counterfactualServerHits <= 0
+      ) {
+        fail(`${label}.counterfactualServerHits must be a positive integer`);
+      }
+    }
+  } else {
+    if (result.barrierEvidenceMode !== 'handler-callback') {
+      fail(`${label}.barrierEvidenceMode must be handler-callback`);
+    }
+    if (result.counterfactualServerHits !== null) {
+      fail(
+        `${label}.counterfactualServerHits must be null for handler vectors`,
+      );
+    }
+  }
+  return result.serverHits;
+}
+
+function assertVersionAtLeast13_3(value, label) {
+  const match = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(value);
+  if (!match) fail(`${label} must be an exact macOS product version`);
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  if (major < 13 || (major === 13 && minor < 3)) {
+    fail(`${label} must be at least 13.3`);
+  }
+}
+
+function validateSignaturePlatformRow(platformId, row, platform) {
+  const label = `checks.byPlatform.${platformId}`;
+  assertExactKeys(row, SIGNATURE_PLATFORM_ROW_KEYS, label);
+  const isWindows = platformId.startsWith('windows-');
+  const matrix = {
+    'windows-10-webview2-111-x64': {
+      hostPlatform: 'win32',
+      hostArch: 'x64',
+      binaryTargetOs: 'windows',
+      binaryTargetArch: 'x86_64',
+      translatedProcess: null,
+    },
+    'windows-11-x64': {
+      hostPlatform: 'win32',
+      hostArch: 'x64',
+      binaryTargetOs: 'windows',
+      binaryTargetArch: 'x86_64',
+      translatedProcess: null,
+    },
+    'macos-13-intel': {
+      hostPlatform: 'darwin',
+      hostArch: 'x64',
+      binaryTargetOs: 'macos',
+      binaryTargetArch: 'x86_64',
+      translatedProcess: false,
+    },
+    'macos-current-arm64': {
+      hostPlatform: 'darwin',
+      hostArch: 'arm64',
+      binaryTargetOs: 'macos',
+      binaryTargetArch: 'aarch64',
+      translatedProcess: false,
+    },
+  }[platformId];
+  for (const [field, expected] of Object.entries(matrix)) {
+    if (row[field] !== expected) {
+      fail(`${label}.${field} must equal ${JSON.stringify(expected)}`);
+    }
+  }
+  if (platform.osVersion !== row.osVersion) {
+    fail(`${label}.osVersion must match the runner platform row`);
+  }
+  if (platform.arch !== row.binaryTargetArch) {
+    fail(`${label}.binaryTargetArch must match the runner platform row`);
+  }
+
+  if (platformId === 'windows-10-webview2-111-x64') {
+    if (row.osVersion !== '10.0.19045') {
+      fail(`${label}.osVersion must equal 10.0.19045`);
+    }
+    if (!/^111\.0\.1661\.\d+$/.test(row.webviewRuntimeVersion)) {
+      fail(`${label}.webviewRuntimeVersion must match 111.0.1661.x`);
+    }
+    if (typeof row.strongSourceKindsInterfaceAvailable !== 'boolean') {
+      fail(`${label}.strongSourceKindsInterfaceAvailable must be boolean`);
+    }
+    const expectedMode = row.strongSourceKindsInterfaceAvailable
+      ? 'webview2-22-all-source-kinds'
+      : 'webview2-legacy-all-contexts-candidate';
+    if (row.resourcePolicyMode !== expectedMode) {
+      fail(`${label}.resourcePolicyMode must match interface availability`);
+    }
+  } else if (platformId === 'windows-11-x64') {
+    const buildMatch = /^10\.0\.(\d+)$/.exec(row.osVersion);
+    if (!buildMatch || Number(buildMatch[1]) < 22000) {
+      fail(`${label}.osVersion must be a frozen Windows 11 build >= 22000`);
+    }
+    if (row.strongSourceKindsInterfaceAvailable !== true) {
+      fail(`${label}.strongSourceKindsInterfaceAvailable must be true`);
+    }
+    if (row.resourcePolicyMode !== 'webview2-22-all-source-kinds') {
+      fail(`${label}.resourcePolicyMode must use the WebView2 v22 interface`);
+    }
+  } else {
+    if (platformId === 'macos-13-intel') {
+      if (!/^13\.3(?:\.\d+)?$/.test(row.osVersion)) {
+        fail(`${label}.osVersion must match 13.3 or 13.3.x`);
+      }
+    } else {
+      assertVersionAtLeast13_3(row.osVersion, `${label}.osVersion`);
+    }
+    if (row.strongSourceKindsInterfaceAvailable !== null) {
+      fail(`${label}.strongSourceKindsInterfaceAvailable must be null`);
+    }
+    if (row.resourcePolicyMode !== 'wk-content-rule-list-exact-origin') {
+      fail(`${label}.resourcePolicyMode must use the WK exact-origin policy`);
+    }
+  }
+  if (!RESOURCE_POLICY_MODES.includes(row.resourcePolicyMode)) {
+    fail(`${label}.resourcePolicyMode is not a fixed platform mode`);
+  }
+  if (row.runtimeMode !== 'native-host-raw-wry-0.55.1') {
+    fail(`${label}.runtimeMode must equal native-host-raw-wry-0.55.1`);
+  }
+  assertFrozenVersion(
+    row.webviewRuntimeVersion,
+    `${label}.webviewRuntimeVersion`,
+  );
+  assertTrueChecks(row, SIGNATURE_TRUE_CHECKS, label);
+  assertFalseChecks(row, SIGNATURE_FALSE_CHECKS, label);
+  if (isWindows) {
+    if (
+      !Number.isInteger(row.blockedCanaryAttempts) ||
+      row.blockedCanaryAttempts < 0
+    ) {
+      fail(`${label}.blockedCanaryAttempts must be a nonnegative integer`);
+    }
+  } else if (row.blockedCanaryAttempts !== null) {
+    fail(`${label}.blockedCanaryAttempts must be null on macOS`);
+  }
+
+  assertExactKeys(
+    row.resourceVectorResults,
+    RESOURCE_VECTORS,
+    `${label}.resourceVectorResults`,
+  );
+  let protectedHits = 0;
+  for (const vector of RESOURCE_VECTORS) {
+    protectedHits += validateResourceVectorResult(
+      platformId,
+      vector,
+      row.resourceVectorResults[vector],
+    );
+  }
+  if (row.crossOriginCanaryServerHits !== protectedHits) {
+    fail(
+      `${label}.crossOriginCanaryServerHits must equal protected vector hits`,
+    );
+  }
+  if (row.crossOriginCanaryServerHits !== 0) {
+    fail(`${label}.crossOriginCanaryServerHits must be exactly 0`);
+  }
+  return protectedHits;
+}
+
+function validateGdCommonChecks(checks) {
+  assertUniqueStringArray(checks.bodyFixtures, 6, 'checks.bodyFixtures');
+  assertUniqueStringArray(checks.liveCases, 3, 'checks.liveCases');
+  assertTrueChecks(
+    checks,
+    [
+      'strictMixedRecordParser',
+      'rejects429',
+      'rejectsOtherNon2xx',
+      'rejectsOversizeBody',
+    ],
+    'gd-contract-pagination',
+  );
+  if (
+    !Number.isInteger(checks.pageLimit) ||
+    checks.pageLimit < 1 ||
+    checks.pageLimit > 50
+  ) {
+    fail('gd-contract-pagination checks.pageLimit must be an integer <= 50');
+  }
+}
+
+function validateGdContractChecks(checks) {
+  assertExactKeys(
+    checks,
+    [...GD_COMMON_CHECK_KEYS, 'searchDefaultsAndBounds'],
+    'gd-contract-pagination checks',
+  );
+  validateGdCommonChecks(checks);
+  assertExactValueObject(
+    checks.searchDefaultsAndBounds,
+    SEARCH_DEFAULTS_AND_BOUNDS,
+    'gd-contract-pagination checks.searchDefaultsAndBounds',
+  );
+}
+
+function deriveGdContractChecks(rawChecks) {
+  assertExactKeys(
+    rawChecks,
+    [
+      ...GD_COMMON_CHECK_KEYS,
+      'searchContractTestResult',
+      'singleCount1000LiveCase',
+    ],
+    'gd-contract-pagination raw checks',
+  );
+  validateGdCommonChecks(rawChecks);
+  assertExactValueObject(
+    rawChecks.searchContractTestResult,
+    SEARCH_CONTRACT_TEST_RESULT,
+    'gd-contract-pagination raw checks.searchContractTestResult',
+  );
+  assertExactValueObject(
+    rawChecks.singleCount1000LiveCase,
+    SINGLE_COUNT_1000_LIVE_CASE,
+    'gd-contract-pagination raw checks.singleCount1000LiveCase',
+  );
+  return {
+    bodyFixtures: [...rawChecks.bodyFixtures],
+    strictMixedRecordParser: rawChecks.strictMixedRecordParser,
+    rejects429: rawChecks.rejects429,
+    rejectsOtherNon2xx: rawChecks.rejectsOtherNon2xx,
+    rejectsOversizeBody: rawChecks.rejectsOversizeBody,
+    liveCases: [...rawChecks.liveCases],
+    pageLimit: rawChecks.pageLimit,
+    searchDefaultsAndBounds: {
+      ...rawChecks.searchContractTestResult,
+      singleCount1000RequestedCount:
+        rawChecks.singleCount1000LiveCase.requestedCount,
+      singleCount1000ApiRequests: rawChecks.singleCount1000LiveCase.apiRequests,
+    },
+  };
+}
+
+function validateSignatureChecks(checks, platforms) {
+  const gateId = 'signature-webview';
+  assertExactKeys(checks, SIGNATURE_CHECK_KEYS, `${gateId} checks`);
+  const ids = platforms.map(({ id }) => id).sort();
+  assertSameStrings(
+    ids,
+    [...SIGNATURE_PLATFORM_IDS].sort(),
+    `${gateId} platforms`,
+  );
+  assertTrueChecks(checks, SIGNATURE_TRUE_CHECKS, gateId);
+  assertFalseChecks(checks, SIGNATURE_FALSE_CHECKS, gateId);
+  assertExactStringSet(
+    checks.resourceVectorsCovered,
+    RESOURCE_VECTORS,
+    'checks.resourceVectorsCovered',
+  );
+  assertExactKeys(
+    checks.byPlatform,
+    SIGNATURE_PLATFORM_IDS,
+    'checks.byPlatform',
+  );
+  for (const field of [
+    'runtimeModes',
+    'resourcePolicyModes',
+    'webviewRuntimeVersions',
+  ]) {
+    assertExactKeys(checks[field], SIGNATURE_PLATFORM_IDS, `checks.${field}`);
+  }
+
+  const platformById = new Map(
+    platforms.map((platform) => [platform.id, platform]),
+  );
+  let protectedHits = 0;
+  for (const platformId of SIGNATURE_PLATFORM_IDS) {
+    const row = checks.byPlatform[platformId];
+    protectedHits += validateSignaturePlatformRow(
+      platformId,
+      row,
+      platformById.get(platformId),
+    );
+    if (checks.runtimeModes[platformId] !== row.runtimeMode) {
+      fail(
+        `checks.runtimeModes.${platformId} must be derived from checks.byPlatform`,
+      );
+    }
+    if (checks.resourcePolicyModes[platformId] !== row.resourcePolicyMode) {
+      fail(
+        `checks.resourcePolicyModes.${platformId} must be derived from checks.byPlatform`,
+      );
+    }
+    if (
+      checks.webviewRuntimeVersions[platformId] !== row.webviewRuntimeVersion
+    ) {
+      fail(
+        `checks.webviewRuntimeVersions.${platformId} must be derived from checks.byPlatform`,
+      );
+    }
+    if (checks.runtimeModes[platformId] !== 'native-host-raw-wry-0.55.1') {
+      fail(`checks.runtimeModes.${platformId} must use raw WRY 0.55.1`);
+    }
+    if (
+      !RESOURCE_POLICY_MODES.includes(checks.resourcePolicyModes[platformId])
+    ) {
+      fail(
+        `checks.resourcePolicyModes.${platformId} is not a fixed platform mode`,
+      );
+    }
+    assertFrozenVersion(
+      checks.webviewRuntimeVersions[platformId],
+      `checks.webviewRuntimeVersions.${platformId}`,
+    );
+  }
+  if (checks.crossOriginCanaryServerHits !== protectedHits) {
+    fail(
+      'signature-webview checks.crossOriginCanaryServerHits must equal row sums',
+    );
+  }
+  if (checks.crossOriginCanaryServerHits !== 0) {
+    fail(
+      'signature-webview checks.crossOriginCanaryServerHits must be exactly 0',
+    );
   }
 }
 
@@ -446,67 +1012,11 @@ function validateGatePass(gateId, platforms, checks, testedCommit) {
       validateToolchainChecks(checks, platforms, testedCommit);
       break;
     case 'gd-contract-pagination':
-      assertUniqueStringArray(checks.bodyFixtures, 6, 'checks.bodyFixtures');
-      assertUniqueStringArray(checks.liveCases, 3, 'checks.liveCases');
-      assertTrueChecks(
-        checks,
-        [
-          'strictMixedRecordParser',
-          'rejects429',
-          'rejectsOtherNon2xx',
-          'rejectsOversizeBody',
-        ],
-        gateId,
-      );
-      if (
-        !Number.isInteger(checks.pageLimit) ||
-        checks.pageLimit < 1 ||
-        checks.pageLimit > 50
-      ) {
-        fail(
-          'gd-contract-pagination checks.pageLimit must be an integer <= 50',
-        );
-      }
+      validateGdContractChecks(checks);
       break;
-    case 'signature-webview': {
-      const expectedIds = [
-        'windows-10-webview2-111-x64',
-        'windows-11-x64',
-        'macos-13-intel',
-        'macos-current-arm64',
-      ];
-      const ids = platforms.map(({ id }) => id).sort();
-      assertSameStrings(
-        ids,
-        [...expectedIds].sort(),
-        'signature-webview platforms',
-      );
-      const legacy = platforms.find(({ id }) => id === expectedIds[0]);
-      if (!legacy.osVersion.includes('111.0.1661.')) {
-        fail('signature-webview requires fixed WebView2 111.0.1661.x');
-      }
-      for (const field of ['runtimeModes', 'filterModes']) {
-        if (!isRecord(checks[field]))
-          fail(`signature-webview checks.${field} must be recorded`);
-        for (const id of expectedIds) {
-          assertNonemptyString(checks[field][id], `checks.${field}.${id}`);
-        }
-      }
-      assertTrueChecks(
-        checks,
-        [
-          'ipcBridgeAbsent',
-          'officialOnlyOrigins',
-          'timeoutCheck',
-          'retryCheck',
-        ],
-        gateId,
-      );
-      if (checks.nestedResourceCanaries !== 0) {
-        fail('signature-webview nested resource canaries must be zero');
-      }
+    case 'signature-webview':
+      validateSignatureChecks(checks, platforms);
       break;
-    }
     case 'network-policy':
       requireDesktopTriplet(platforms, gateId);
       assertTrueChecks(
@@ -687,8 +1197,12 @@ export async function buildEvidence(
     fail('testedCommit must equal git HEAD during build');
   validatePlatforms(raw.platforms, raw.status);
   if (!isRecord(raw.checks)) fail('checks must be an object');
+  let checks = raw.checks;
   if (raw.status === 'pass') {
-    validateGatePass(raw.gateId, raw.platforms, raw.checks, raw.testedCommit);
+    if (raw.gateId === 'gd-contract-pagination') {
+      checks = deriveGdContractChecks(raw.checks);
+    }
+    validateGatePass(raw.gateId, raw.platforms, checks, raw.testedCommit);
   }
   const decisionPaths = normalizeRawDecisions(raw.gateId, raw.decisions);
 
@@ -726,7 +1240,7 @@ export async function buildEvidence(
     markdownSha256: sha256(markdown.bytes),
     decisions,
     platforms: raw.platforms,
-    checks: raw.checks,
+    checks,
   };
 
   await validateEvidence(evidence, { cwd });

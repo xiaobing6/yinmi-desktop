@@ -20,7 +20,7 @@
     "checks"
   ],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "gateId": {
       "enum": [
         "atomic-commit",
@@ -36,7 +36,7 @@
       "enum": ["pass", "design-change-required", "blocked"]
     },
     "designCommit": {
-      "const": "5893d4340a4815677da79f74223642ac855519e7"
+      "const": "782b30d8eb1075cce708ddef878cd236d2fa7dc2"
     },
     "testedCommit": { "$ref": "#/$defs/sha1" },
     "testedAt": {
@@ -97,6 +97,32 @@
     },
     "checks": { "type": "object" }
   },
+  "allOf": [
+    {
+      "if": {
+        "required": ["gateId", "status"],
+        "properties": {
+          "gateId": { "const": "gd-contract-pagination" },
+          "status": { "const": "pass" }
+        }
+      },
+      "then": {
+        "properties": { "checks": { "$ref": "#/$defs/gdChecks" } }
+      }
+    },
+    {
+      "if": {
+        "required": ["gateId", "status"],
+        "properties": {
+          "gateId": { "const": "signature-webview" },
+          "status": { "const": "pass" }
+        }
+      },
+      "then": {
+        "properties": { "checks": { "$ref": "#/$defs/signatureChecks" } }
+      }
+    }
+  ],
   "$defs": {
     "repositoryPath": {
       "type": "string",
@@ -110,6 +136,467 @@
     "sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "searchDefaultsAndBounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defaultInternalCode",
+        "defaultDisplayName",
+        "defaultWireValue",
+        "defaultCount",
+        "minimumCount",
+        "maximumCount",
+        "boundaryTestsPassed",
+        "singleCount1000RequestedCount",
+        "singleCount1000ApiRequests"
+      ],
+      "properties": {
+        "defaultInternalCode": { "const": "netease_music" },
+        "defaultDisplayName": { "const": "网易云音乐" },
+        "defaultWireValue": { "const": "netease" },
+        "defaultCount": { "const": 20 },
+        "minimumCount": { "const": 1 },
+        "maximumCount": { "const": 1000 },
+        "boundaryTestsPassed": { "const": true },
+        "singleCount1000RequestedCount": { "const": 1000 },
+        "singleCount1000ApiRequests": { "const": 1 }
+      }
+    },
+    "gdChecks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bodyFixtures",
+        "strictMixedRecordParser",
+        "rejects429",
+        "rejectsOtherNon2xx",
+        "rejectsOversizeBody",
+        "liveCases",
+        "pageLimit",
+        "searchDefaultsAndBounds"
+      ],
+      "properties": {
+        "bodyFixtures": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "strictMixedRecordParser": { "const": true },
+        "rejects429": { "const": true },
+        "rejectsOtherNon2xx": { "const": true },
+        "rejectsOversizeBody": { "const": true },
+        "liveCases": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "pageLimit": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "searchDefaultsAndBounds": {
+          "$ref": "#/$defs/searchDefaultsAndBounds"
+        }
+      }
+    },
+    "platformRuntimeModes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windows-10-webview2-111-x64",
+        "windows-11-x64",
+        "macos-13-intel",
+        "macos-current-arm64"
+      ],
+      "properties": {
+        "windows-10-webview2-111-x64": {
+          "const": "native-host-raw-wry-0.55.1"
+        },
+        "windows-11-x64": { "const": "native-host-raw-wry-0.55.1" },
+        "macos-13-intel": { "const": "native-host-raw-wry-0.55.1" },
+        "macos-current-arm64": { "const": "native-host-raw-wry-0.55.1" }
+      }
+    },
+    "platformResourcePolicyModes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windows-10-webview2-111-x64",
+        "windows-11-x64",
+        "macos-13-intel",
+        "macos-current-arm64"
+      ],
+      "properties": {
+        "windows-10-webview2-111-x64": { "$ref": "#/$defs/resourcePolicyMode" },
+        "windows-11-x64": { "$ref": "#/$defs/resourcePolicyMode" },
+        "macos-13-intel": { "$ref": "#/$defs/resourcePolicyMode" },
+        "macos-current-arm64": { "$ref": "#/$defs/resourcePolicyMode" }
+      }
+    },
+    "platformRuntimeVersions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windows-10-webview2-111-x64",
+        "windows-11-x64",
+        "macos-13-intel",
+        "macos-current-arm64"
+      ],
+      "properties": {
+        "windows-10-webview2-111-x64": { "$ref": "#/$defs/exactVersion" },
+        "windows-11-x64": { "$ref": "#/$defs/exactVersion" },
+        "macos-13-intel": { "$ref": "#/$defs/exactVersion" },
+        "macos-current-arm64": { "$ref": "#/$defs/exactVersion" }
+      }
+    },
+    "exactVersion": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!\\s)(?!.*\\s$)(?!(?:[Cc][Uu][Rr][Rr][Ee][Nn][Tt]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Uu][Nn][Aa][Vv][Aa][Ii][Ll][Aa][Bb][Ll][Ee]|[Rr][Ee][Cc][Oo][Rr][Dd](?::.*)?)$).+$"
+    },
+    "resourcePolicyMode": {
+      "enum": [
+        "webview2-22-all-source-kinds",
+        "webview2-legacy-all-contexts-candidate",
+        "wk-content-rule-list-exact-origin"
+      ]
+    },
+    "resourceVectorsCovered": {
+      "type": "array",
+      "minItems": 20,
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "document",
+          "iframe",
+          "script",
+          "style",
+          "image",
+          "media",
+          "fetch",
+          "xhr",
+          "worker",
+          "service_worker",
+          "websocket",
+          "sse",
+          "beacon",
+          "redirect",
+          "popup",
+          "download",
+          "top_level_data",
+          "top_level_blob",
+          "top_level_file",
+          "top_level_custom_protocol"
+        ]
+      }
+    },
+    "resourceVectorResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeAttempted",
+        "availabilityOutcome",
+        "deterministicBarrierSeamCovered",
+        "expectedBarrier",
+        "enforcedBarrier",
+        "barrierEvidenceMode",
+        "counterfactualServerHits",
+        "allowedRedirectHopHits",
+        "serverHits"
+      ],
+      "properties": {
+        "runtimeAttempted": { "const": true },
+        "availabilityOutcome": {
+          "enum": ["available", "service-worker-api-absent"]
+        },
+        "deterministicBarrierSeamCovered": { "const": true },
+        "expectedBarrier": {
+          "enum": [
+            "webview2-web-resource-requested",
+            "wk-content-rule-list",
+            "new-window-handler",
+            "download-handler",
+            "navigation-handler"
+          ]
+        },
+        "enforcedBarrier": {
+          "enum": [
+            "webview2-web-resource-requested",
+            "wk-content-rule-list",
+            "new-window-handler",
+            "download-handler",
+            "navigation-handler"
+          ]
+        },
+        "barrierEvidenceMode": {
+          "enum": [
+            "native-callback",
+            "paired-counterfactual",
+            "handler-callback",
+            "deterministic-seam-only"
+          ]
+        },
+        "counterfactualServerHits": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 1 }
+          ]
+        },
+        "allowedRedirectHopHits": { "type": "integer", "minimum": 0 },
+        "serverHits": { "const": 0 }
+      }
+    },
+    "resourceVectorResults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document",
+        "iframe",
+        "script",
+        "style",
+        "image",
+        "media",
+        "fetch",
+        "xhr",
+        "worker",
+        "service_worker",
+        "websocket",
+        "sse",
+        "beacon",
+        "redirect",
+        "popup",
+        "download",
+        "top_level_data",
+        "top_level_blob",
+        "top_level_file",
+        "top_level_custom_protocol"
+      ],
+      "properties": {
+        "document": { "$ref": "#/$defs/resourceVectorResult" },
+        "iframe": { "$ref": "#/$defs/resourceVectorResult" },
+        "script": { "$ref": "#/$defs/resourceVectorResult" },
+        "style": { "$ref": "#/$defs/resourceVectorResult" },
+        "image": { "$ref": "#/$defs/resourceVectorResult" },
+        "media": { "$ref": "#/$defs/resourceVectorResult" },
+        "fetch": { "$ref": "#/$defs/resourceVectorResult" },
+        "xhr": { "$ref": "#/$defs/resourceVectorResult" },
+        "worker": { "$ref": "#/$defs/resourceVectorResult" },
+        "service_worker": { "$ref": "#/$defs/resourceVectorResult" },
+        "websocket": { "$ref": "#/$defs/resourceVectorResult" },
+        "sse": { "$ref": "#/$defs/resourceVectorResult" },
+        "beacon": { "$ref": "#/$defs/resourceVectorResult" },
+        "redirect": { "$ref": "#/$defs/resourceVectorResult" },
+        "popup": { "$ref": "#/$defs/resourceVectorResult" },
+        "download": { "$ref": "#/$defs/resourceVectorResult" },
+        "top_level_data": { "$ref": "#/$defs/resourceVectorResult" },
+        "top_level_blob": { "$ref": "#/$defs/resourceVectorResult" },
+        "top_level_file": { "$ref": "#/$defs/resourceVectorResult" },
+        "top_level_custom_protocol": {
+          "$ref": "#/$defs/resourceVectorResult"
+        }
+      }
+    },
+    "signaturePlatformRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostPlatform",
+        "hostArch",
+        "osVersion",
+        "binaryTargetOs",
+        "binaryTargetArch",
+        "translatedProcess",
+        "webviewRuntimeVersion",
+        "runtimeMode",
+        "resourcePolicyMode",
+        "strongSourceKindsInterfaceAvailable",
+        "rawWryHost",
+        "usesTauriManagedWebView",
+        "tauriGlobalsAbsent",
+        "applicationInitializationScriptsAbsent",
+        "applicationIpcHandlerAbsent",
+        "inertWryShimPresent",
+        "hiddenIpcCanaryDeltaZero",
+        "hiddenIpcProducedNoResponse",
+        "appStateUnchanged",
+        "capabilityMatchAbsent",
+        "policyInstalledBeforeFirstNetworkNavigation",
+        "officialFinishedBeforePolling",
+        "officialOnlyOrigins",
+        "storageNonPersistent",
+        "newInstanceStorageRecovered",
+        "restartStorageRecovered",
+        "timeoutCheck",
+        "retryCheck",
+        "policyFaultInvalidatesInstance",
+        "lateCallbackIsolated",
+        "destroyConfirmedBeforeRetry",
+        "resourcePolicyCleanupAcknowledged",
+        "policyTombstonesEmptyBeforeExit",
+        "lifecycleNoMonotonicGrowth",
+        "noOrphanHostWindows",
+        "visibleWindowLeakAbsent",
+        "unexpectedActivationAbsent",
+        "ordinaryExitCleanupAcknowledged",
+        "crossOriginCanaryServerHits",
+        "blockedCanaryAttempts",
+        "resourceVectorResults"
+      ],
+      "properties": {
+        "hostPlatform": { "enum": ["win32", "darwin"] },
+        "hostArch": { "enum": ["x64", "arm64"] },
+        "osVersion": { "type": "string", "minLength": 1 },
+        "binaryTargetOs": { "enum": ["windows", "macos"] },
+        "binaryTargetArch": { "enum": ["x86_64", "aarch64"] },
+        "translatedProcess": {
+          "oneOf": [{ "type": "null" }, { "type": "boolean" }]
+        },
+        "webviewRuntimeVersion": { "$ref": "#/$defs/exactVersion" },
+        "runtimeMode": { "const": "native-host-raw-wry-0.55.1" },
+        "resourcePolicyMode": { "$ref": "#/$defs/resourcePolicyMode" },
+        "strongSourceKindsInterfaceAvailable": {
+          "oneOf": [{ "type": "null" }, { "type": "boolean" }]
+        },
+        "rawWryHost": { "const": true },
+        "usesTauriManagedWebView": { "const": false },
+        "tauriGlobalsAbsent": { "const": true },
+        "applicationInitializationScriptsAbsent": { "const": true },
+        "applicationIpcHandlerAbsent": { "const": true },
+        "inertWryShimPresent": { "const": true },
+        "hiddenIpcCanaryDeltaZero": { "const": true },
+        "hiddenIpcProducedNoResponse": { "const": true },
+        "appStateUnchanged": { "const": true },
+        "capabilityMatchAbsent": { "const": true },
+        "policyInstalledBeforeFirstNetworkNavigation": { "const": true },
+        "officialFinishedBeforePolling": { "const": true },
+        "officialOnlyOrigins": { "const": true },
+        "storageNonPersistent": { "const": true },
+        "newInstanceStorageRecovered": { "const": false },
+        "restartStorageRecovered": { "const": false },
+        "timeoutCheck": { "const": true },
+        "retryCheck": { "const": true },
+        "policyFaultInvalidatesInstance": { "const": true },
+        "lateCallbackIsolated": { "const": true },
+        "destroyConfirmedBeforeRetry": { "const": true },
+        "resourcePolicyCleanupAcknowledged": { "const": true },
+        "policyTombstonesEmptyBeforeExit": { "const": true },
+        "lifecycleNoMonotonicGrowth": { "const": true },
+        "noOrphanHostWindows": { "const": true },
+        "visibleWindowLeakAbsent": { "const": true },
+        "unexpectedActivationAbsent": { "const": true },
+        "ordinaryExitCleanupAcknowledged": { "const": true },
+        "crossOriginCanaryServerHits": { "const": 0 },
+        "blockedCanaryAttempts": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0 }
+          ]
+        },
+        "resourceVectorResults": { "$ref": "#/$defs/resourceVectorResults" }
+      }
+    },
+    "signatureByPlatform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windows-10-webview2-111-x64",
+        "windows-11-x64",
+        "macos-13-intel",
+        "macos-current-arm64"
+      ],
+      "properties": {
+        "windows-10-webview2-111-x64": {
+          "$ref": "#/$defs/signaturePlatformRow"
+        },
+        "windows-11-x64": { "$ref": "#/$defs/signaturePlatformRow" },
+        "macos-13-intel": { "$ref": "#/$defs/signaturePlatformRow" },
+        "macos-current-arm64": { "$ref": "#/$defs/signaturePlatformRow" }
+      }
+    },
+    "signatureChecks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeModes",
+        "resourcePolicyModes",
+        "webviewRuntimeVersions",
+        "resourceVectorsCovered",
+        "rawWryHost",
+        "usesTauriManagedWebView",
+        "tauriGlobalsAbsent",
+        "applicationInitializationScriptsAbsent",
+        "applicationIpcHandlerAbsent",
+        "inertWryShimPresent",
+        "hiddenIpcCanaryDeltaZero",
+        "hiddenIpcProducedNoResponse",
+        "appStateUnchanged",
+        "capabilityMatchAbsent",
+        "policyInstalledBeforeFirstNetworkNavigation",
+        "officialFinishedBeforePolling",
+        "officialOnlyOrigins",
+        "storageNonPersistent",
+        "newInstanceStorageRecovered",
+        "restartStorageRecovered",
+        "timeoutCheck",
+        "retryCheck",
+        "policyFaultInvalidatesInstance",
+        "lateCallbackIsolated",
+        "destroyConfirmedBeforeRetry",
+        "resourcePolicyCleanupAcknowledged",
+        "policyTombstonesEmptyBeforeExit",
+        "lifecycleNoMonotonicGrowth",
+        "noOrphanHostWindows",
+        "visibleWindowLeakAbsent",
+        "unexpectedActivationAbsent",
+        "ordinaryExitCleanupAcknowledged",
+        "crossOriginCanaryServerHits",
+        "byPlatform"
+      ],
+      "properties": {
+        "runtimeModes": { "$ref": "#/$defs/platformRuntimeModes" },
+        "resourcePolicyModes": {
+          "$ref": "#/$defs/platformResourcePolicyModes"
+        },
+        "webviewRuntimeVersions": {
+          "$ref": "#/$defs/platformRuntimeVersions"
+        },
+        "resourceVectorsCovered": {
+          "$ref": "#/$defs/resourceVectorsCovered"
+        },
+        "rawWryHost": { "const": true },
+        "usesTauriManagedWebView": { "const": false },
+        "tauriGlobalsAbsent": { "const": true },
+        "applicationInitializationScriptsAbsent": { "const": true },
+        "applicationIpcHandlerAbsent": { "const": true },
+        "inertWryShimPresent": { "const": true },
+        "hiddenIpcCanaryDeltaZero": { "const": true },
+        "hiddenIpcProducedNoResponse": { "const": true },
+        "appStateUnchanged": { "const": true },
+        "capabilityMatchAbsent": { "const": true },
+        "policyInstalledBeforeFirstNetworkNavigation": { "const": true },
+        "officialFinishedBeforePolling": { "const": true },
+        "officialOnlyOrigins": { "const": true },
+        "storageNonPersistent": { "const": true },
+        "newInstanceStorageRecovered": { "const": false },
+        "restartStorageRecovered": { "const": false },
+        "timeoutCheck": { "const": true },
+        "retryCheck": { "const": true },
+        "policyFaultInvalidatesInstance": { "const": true },
+        "lateCallbackIsolated": { "const": true },
+        "destroyConfirmedBeforeRetry": { "const": true },
+        "resourcePolicyCleanupAcknowledged": { "const": true },
+        "policyTombstonesEmptyBeforeExit": { "const": true },
+        "lifecycleNoMonotonicGrowth": { "const": true },
+        "noOrphanHostWindows": { "const": true },
+        "visibleWindowLeakAbsent": { "const": true },
+        "unexpectedActivationAbsent": { "const": true },
+        "ordinaryExitCleanupAcknowledged": { "const": true },
+        "crossOriginCanaryServerHits": { "const": 0 },
+        "byPlatform": { "$ref": "#/$defs/signatureByPlatform" }
+      }
     }
   }
 }
