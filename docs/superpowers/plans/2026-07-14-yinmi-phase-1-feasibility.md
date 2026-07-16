@@ -2,15 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 从已确认设计提交 `5893d4340a4815677da79f74223642ac855519e7` 建立可重复构建的 Tauri 2/Svelte 5 工程，并用可审计原型关闭协议分页、隐藏 WebView、SSRF/DNS、原子无覆盖提交、媒体容器、更新取消和 1000 条结果性能风险。
+**Goal:** 从已确认设计提交 `782b30d8eb1075cce708ddef878cd236d2fa7dc2` 建立可重复构建的 Tauri 2/Svelte 5 工程，并用可审计原型关闭协议分页、零应用能力 raw WRY 签名宿主、SSRF/DNS、原子无覆盖提交、媒体容器、更新取消和 1000 条结果性能风险。
 
-**Architecture:** 第一阶段只建立最小产品壳、纯函数契约模块、受 Cargo feature 与 Vite mode 双重隔离的可行性探针，以及 Windows/macOS 基础 CI。可复用的协议代码进入 `music`，未验证的平台机制全部进入 `feasibility`；原始探针输出只进入被忽略的 `artifacts/feasibility/`，仓库仅提交脱敏结论、ADR 和自动门控清单。
+**Architecture:** 第一阶段只建立最小产品壳、纯函数契约模块、受 Cargo feature 与 Vite mode 双重隔离的可行性探针，以及 Windows/macOS 基础 CI。签名原型使用无 managed WebView 的独立 Tauri 原生宿主窗口，在 UI 主线程注册表中持有 raw WRY 与平台策略；可复用的协议代码进入 `music`，未验证的平台机制全部进入 `feasibility`。原始探针输出只进入被忽略的 `artifacts/feasibility/`，仓库仅提交脱敏结论、ADR 和自动门控清单。
 
-**Tech Stack:** Node.js 24 LTS、pnpm 11.7.0、Svelte 5.56.5、TypeScript 6.0.3、Vite 8.1.4、Tailwind CSS 4.3.2、Vitest 4.1.10、Rust 1.97.0、Tauri 2、Tokio、Reqwest/rustls、Serde、Thiserror、Lofty、GitHub Actions。
+**Tech Stack:** Node.js 24 LTS、pnpm 11.7.0、Svelte 5.56.5、TypeScript 6.0.3、Vite 8.1.4、Tailwind CSS 4.3.2、Vitest 4.1.10、Rust 1.97.0、Tauri 2.11.5、WRY 0.55.1、WebView2/WKWebView、Tokio、Reqwest/rustls、Serde、Thiserror、Lofty、GitHub Actions。
 
 ## Global Constraints
 
-- 设计来源固定为 `docs/plans/2026-07-14-music-desktop-design.md`，基线提交为 `5893d4340a4815677da79f74223642ac855519e7`；任何改变产品行为、安全不变量、外部契约或发布结果的发现都必须先回修设计。
+- 设计来源固定为 `docs/plans/2026-07-14-music-desktop-design.md`，基线提交为 `782b30d8eb1075cce708ddef878cd236d2fa7dc2`；任何改变产品行为、安全不变量、外部契约或发布结果的发现都必须先回修设计。
 - 在独立 worktree 的 `phase1/<slug>` 分支中执行，不直接在 `master` 上开发；开始执行时先使用 `superpowers:using-git-worktrees`。该分支前缀也是平台 CI 获取实现分支原始提交 SHA 的固定触发契约。
 - Node.js 使用 24 LTS，`packageManager` 固定 `pnpm@11.7.0` 并提交 `pnpm-lock.yaml`。
 - TypeScript 固定为 `6.0.3`，与 `typescript-eslint@8.64.0` 的官方支持范围兼容；在 ESLint 工具链正式支持 TypeScript 7 前不得升至 7.x。
@@ -18,10 +18,11 @@
 - 用户可见名称与日志目录名为“音觅”，工程名为 `yinmi`，Bundle Identifier 为 `io.github.xiaobing6.yinmi`，首版版本为 `0.1.0`。
 - Windows 支持 Windows 10 22H2/Windows 11 x64 与 WebView2 `111.0.1661.0` 以上；macOS 支持 13.3 以上 Intel/Apple Silicon，最终产物为 Universal。
 - 前端构建目标为 Chrome 111 与 Safari 16.4；首版只使用简体中文集中式文案。
-- 所有音乐、媒体和更新网络请求由 Rust 发起；前端不得获得通用网络、文件系统或 Shell 权限。
-- 隐藏签名 WebView 不匹配任何 capability，不配置 `remote.urls`，不得拥有 IPC、插件、事件、文件或系统能力。
+- 除设计 §5.5 明确允许的签名官方页及其官方来源子资源由隔离 raw WRY 加载外，所有音乐、媒体和更新网络请求由 Rust 发起；主前端不得获得通用网络、文件系统或 Shell 权限。
+- 隐藏签名宿主不包含 Tauri managed WebView，不匹配任何 capability，也不配置 `remote.urls`。应用不得向 raw WRY 注册初始化脚本、IPC handler、custom protocol、插件、事件、文件或系统能力；WRY 0.55.1 自带但未绑定应用 handler 的 inert `window.ipc` shim 可以存在，但不得产生响应、命令、事件或状态副作用。
+- 仅 feature-only 隔离探针可创建同样零应用能力的 raw WRY counterfactual，并把策略允许源替换为 runner 持有证书的受控本机 TLS 源，用于逐向量证明“无规则可达/生产规则拦截”和允许首跳后的 redirect；该注入器、证书、源和无规则模式不得进入默认构建、正式签名宿主或 live GD 探针。
 - GD API 固定为 `https://music.gdstudio.xyz/api.php`；在线探针仍受全局 5 分钟 50 次请求限制，不把原始第三方响应提交到仓库。
-- 搜索默认音源为网易云音乐，数量范围为 1–1000；第一阶段只探测真实分页行为，不实现正式搜索 UI。
+- 搜索默认音源为网易云音乐，搜索数量初始值为 20、范围为 1–1000；第一阶段只探测真实分页行为，不实现正式搜索 UI。
 - 签名初始化 20 秒、单次调用 5 秒、返回值 128 字节；网络与资源边界逐字沿用设计附录 B。
 - 临时文件与最终提交必须在同一目录；验证结果必须证明原子且不覆盖，不能用“先检查后重命名”代替。
 - 第一阶段不实现正式下载队列、播放器、账号、数据库、配置持久化、FFmpeg、正式更新安装 UI 或发布流水线。
@@ -73,10 +74,10 @@ docs/feasibility/result-list-performance.json
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "gateId": "signature-webview",
   "status": "pass",
-  "designCommit": "5893d4340a4815677da79f74223642ac855519e7",
+  "designCommit": "782b30d8eb1075cce708ddef878cd236d2fa7dc2",
   "testedCommit": "40 lowercase hex characters",
   "testedAt": "RFC 3339 UTC timestamp",
   "scopeFiles": ["sorted/repository-relative/path"],
@@ -110,15 +111,15 @@ Required machine fields are gate-specific:
 | Gate | Required machine checks |
 | --- | --- |
 | `toolchain-ci` | Windows x64, macOS Intel and macOS ARM rows; `quality`, `platform-windows`, `platform-macos` exact-SHA checks all successful |
-| `gd-contract-pagination` | six body fixtures, strict mixed-record parser, 429/other non-2xx/5 MiB+1 tests, all three live cases, numeric safety page limit `<=50` |
-| `signature-webview` | Exact IDs `windows-10-webview2-111-x64`, `windows-11-x64`, `macos-13-intel`, `macos-current-arm64`; the Windows 10 row uses the lowest available WebView2 111.0.1661.x fixed runtime; runtime/filter mode recorded, `ipcBridgeAbsent`, nested resource canaries zero, official-only origins, timeout/retry checks |
+| `gd-contract-pagination` | default `GdSource::NeteaseMusic`, initial count 20 and typed 1–1000 search-count boundary, six body fixtures, strict mixed-record parser, 429/other non-2xx/5 MiB+1 tests, all three live cases, numeric safety page limit `<=50` |
+| `signature-webview` | Exact four-ID `checks.byPlatform` map and derived aggregates; runner-verified host OS plus child architecture/translation, exact runtime versions plus platform-correlated runtime/policy modes; Windows 10 uses the lowest available WebView2 111.0.1661.x fixed runtime; raw WRY host true, managed WebView false, zero application IPC/capability side effects, policy-before-first-network-navigation and official-finish-before-poll, official-only origins, explicit nonpersistent storage with no recovery, exact 20-key per-vector attempt/availability/barrier/hit results with zero canary-server hits, timeout/retry/fault/late-callback isolation, composite native/policy/tombstone ordinary exit and leak-free lifecycle |
 | `network-policy` | Windows x64, macOS Intel and macOS ARM rows; all-address-set, redirect, peer-pin, body-limit and proxy-disabled checks true |
 | `atomic-commit` | NTFS Windows plus APFS Intel/ARM rows; exactly one winner, zero overwrite, zero leftovers, cancel linearization true |
 | `media-containers` | Windows x64, macOS Intel and macOS ARM rows; MP3/FLAC round trips true and `negativeFamiliesRejected` is exactly the unique string set `mp2,aac,mp4,ogg,opus,wav,truncated` |
-| `updater-exit-barrier` | Windows x64, macOS Intel and macOS ARM rows; real drop-future and real bounded wait-only observations, no early exit/install, numeric production timeout and feedback fields |
+| `updater-exit-barrier` | Exact Windows x64, macOS Intel and macOS ARM rows with verified host/child architecture; real drop-future and real bounded wait-only classification plus final-SHA production-policy validation, exact derived timeout/size/throughput/text contract, no early exit/install, nonce-bound two-profile ordinal traces, and a derived active-signature-host cleanup map proving a host existed before the exit request, native/manager/policy-store/tombstone/TLS checks preceded the `app.exit()` invocation boundary, and the process exited afterward on every platform |
 | `result-list-performance` | its own schema; shared clean harness SHA, all budgets, Windows authority profile and macOS auxiliary rows |
 
-Code affecting a gate is committed before platform/manual evidence is collected. Evidence Markdown/JSON and ADR are committed separately after the helper validates them. A missing platform is `blocked`; an empty, stale, dirty-tree or hand-edited result cannot become `pass`. Ordinary `pnpm quality` runs evidence-validator unit tests but deliberately does not validate previously committed observations: Tasks 3–10 share manifests and configs, so doing that would self-lock the branch before refreshed evidence could be collected. Strict current-scope validation runs immediately after each companion is built and in `pnpm phase1:gate`. Task 10 freezes the final gate-mechanics commit, reruns all eight observations against it, and rebuilds every companion before generating the aggregate.
+Code affecting a gate is committed before platform/manual evidence is collected. Evidence Markdown/JSON and ADR are committed separately after the helper validates them. Schema version 2 and the revised design identity intentionally invalidate every schema-v1 common-envelope companion; they are never hand-upgraded. The performance companion continues to use its independent strict schema, but common-scope and final-tested-SHA changes still force a fresh capture/finalization. A missing platform is `blocked`; an empty, stale, dirty-tree or hand-edited result cannot become `pass`. Ordinary `pnpm quality` runs evidence-validator unit tests but deliberately does not validate previously committed observations: Tasks 3–10 share manifests and configs, so doing that would self-lock the branch before refreshed evidence could be collected. Strict current-scope validation runs immediately after each new companion is built and in `pnpm phase1:gate`. Task 10 freezes the final gate-mechanics commit, reruns all eight observations against it, and rebuilds every companion before generating the aggregate.
 
 ## Planned File Structure
 
@@ -185,12 +186,18 @@ Code affecting a gate is committed before platform/manual evidence is collected.
 │  ├─ verify-config.mjs
 │  ├─ verify-ci.mjs
 │  ├─ verify-default-artifacts.mjs
+│  ├─ verify-signature-host.mjs
+│  ├─ verify-signature-host.test.mjs
+│  ├─ run-signature-lifecycle-probe.mjs
+│  ├─ run-signature-lifecycle-probe.test.mjs
 │  ├─ feasibility-evidence.mjs
 │  ├─ feasibility-evidence.test.mjs
 │  ├─ check-phase1-gate.mjs
 │  ├─ check-phase1-gate.test.mjs
 │  ├─ generate-media-fixtures.mjs
 │  ├─ slow-update-server.mjs
+│  ├─ run-updater-exit-probe.mjs
+│  ├─ run-updater-exit-probe.test.mjs
 │  └─ perf/
 │     ├─ capture-windows-baseline.ps1
 │     ├─ run-browser.mjs
@@ -219,8 +226,14 @@ Code affecting a gate is committed before platform/manual evidence is collected.
 │  │  │  ├─ gd_live.rs
 │  │  │  ├─ media_probe.rs
 │  │  │  ├─ network_policy.rs
+│  │  │  ├─ signature_host.rs
+│  │  │  ├─ signature_probe.rs
 │  │  │  ├─ signature_webview.rs
 │  │  │  ├─ webview_resource_policy.rs
+│  │  │  ├─ webview_resource_policy/
+│  │  │  │  ├─ macos.rs
+│  │  │  │  └─ windows.rs
+│  │  │  ├─ updater_policy.rs
 │  │  │  └─ updater_probe.rs
 │  │  ├─ music/
 │  │  │  ├─ contract.rs
@@ -295,7 +308,7 @@ Code affecting a gate is committed before platform/manual evidence is collected.
 - Create: `src-tauri/icons/icon-source.svg` and generated icon files
 
 **Interfaces:**
-- Consumes: design identity and platform floors from commit `5893d4340a4815677da79f74223642ac855519e7`.
+- Consumes: design identity and platform floors from commit `782b30d8eb1075cce708ddef878cd236d2fa7dc2`.
 - Produces: `yinmi_lib::run()`, npm scripts `format:check`, `lint`, `check`, `test`, `build`, `verify:config`, `quality`, and a default app containing no feasibility commands.
 
 - [ ] **Step 1: Install and verify the pinned local toolchain**
@@ -408,7 +421,7 @@ Create `README.md` with the current authorized phase and design baseline:
 ```markdown
 # 音觅
 
-Phase 1 feasibility validation is in progress against design commit `5893d4340a4815677da79f74223642ac855519e7`. Product feature implementation beyond the Phase 1 gate is not yet authorized.
+Phase 1 feasibility validation is in progress against design commit `782b30d8eb1075cce708ddef878cd236d2fa7dc2`. Product feature implementation beyond the Phase 1 gate is not yet authorized.
 ```
 
 Create `.editorconfig` and `prettier.config.js`:
@@ -1154,7 +1167,7 @@ git commit -m "docs: record cross-platform CI evidence"
 
 **Interfaces:**
 - Consumes: fixed wire contract from design Appendix A; no network and no WebView.
-- Produces: `EncodedComponent`, `SignatureValue`, `GdSource`, `GdOperation`, `render_form_body`, all four response parsers, and `PaginationProbe`; Task 4 must consume these exact types rather than rebuilding strings.
+- Produces: `EncodedComponent`, `SignatureValue`, `GdSource`, bounded `SearchCount`, `GdOperation`, `render_form_body`, all four response parsers, and `PaginationProbe`; Task 4 must consume these exact types rather than rebuilding strings.
 
 - [ ] **Step 1: Add exact fixture data and failing form-body tests**
 
@@ -1165,7 +1178,7 @@ thiserror = "2"
 url = "2"
 ```
 
-Create `fixtures/gd/README.md` first. It identifies every fixture as a hand-authored minimal contract sample derived from design commit `5893d4340a4815677da79f74223642ac855519e7` and official page version `2026.06.16`, maps each filename to the rule it proves, and states that no raw third-party song row or signature is stored.
+Create `src-tauri/tests/fixtures/gd/README.md` first. It identifies every fixture as a hand-authored minimal protocol sample historically derived from design commit `5893d4340a4815677da79f74223642ac855519e7` and official page version `2026.06.16`, maps each filename to the rule it proves, and states that no raw third-party song row or signature is stored. This historical fixture provenance remains unchanged; all current evidence envelopes use authoritative design commit `782b30d8eb1075cce708ddef878cd236d2fa7dc2`.
 
 Create `src-tauri/tests/fixtures/gd/search_mixed.json`:
 
@@ -1273,7 +1286,8 @@ Write `src-tauri/tests/gd_contract.rs` with the six exact body assertions and sp
 
 ```rust
 use yinmi_lib::music::contract::{
-    render_form_body, EncodedComponent, GdOperation, GdSource, SearchOperation, SignatureValue,
+    render_form_body, EncodedComponent, GdOperation, GdSource, SearchCount, SearchOperation,
+    SignatureValue,
 };
 
 const SIG: &str = "fixture-signature";
@@ -1286,15 +1300,15 @@ fn renders_six_official_bodies_in_exact_order() {
 
     let cases = [
         (
-            GdOperation::Search { operation: SearchOperation::Track, count: 20, source: GdSource::NeteaseMusic, page: 1, name: name.clone() },
+            GdOperation::Search { operation: SearchOperation::Track, count: SearchCount::try_from(20).unwrap(), source: GdSource::NeteaseMusic, page: 1, name: name.clone() },
             "types=search&count=20&source=netease&pages=1&name=%E5%91%A8%E6%9D%B0%E4%BC%A6&s=fixture-signature",
         ),
         (
-            GdOperation::Search { operation: SearchOperation::Album, count: 20, source: GdSource::NeteaseMusic, page: 1, name: name.clone() },
+            GdOperation::Search { operation: SearchOperation::Album, count: SearchCount::try_from(20).unwrap(), source: GdSource::NeteaseMusic, page: 1, name: name.clone() },
             "types=search_album&count=20&source=netease&pages=1&name=%E5%91%A8%E6%9D%B0%E4%BC%A6&s=fixture-signature",
         ),
         (
-            GdOperation::Search { operation: SearchOperation::Playlist, count: 20, source: GdSource::NeteaseMusic, page: 1, name },
+            GdOperation::Search { operation: SearchOperation::Playlist, count: SearchCount::try_from(20).unwrap(), source: GdSource::NeteaseMusic, page: 1, name },
             "types=search_playlist&count=20&source=netease&pages=1&name=%E5%91%A8%E6%9D%B0%E4%BC%A6&s=fixture-signature",
         ),
         (
@@ -1326,6 +1340,8 @@ fn matches_javascript_component_encoding_without_double_encoding() {
 
 Add one table test covering all ten Appendix A.1 internal-code/display-name/wire-value triples and assert `GdSource::DEFAULT == GdSource::NeteaseMusic`; source strings must never enter a request constructor directly.
 
+Add an exact search-count boundary test: `SearchCount::DEFAULT.get() == 20`; `SearchCount::try_from(1)` and `SearchCount::try_from(1000)` succeed and preserve those values; `0` and `1001` return `ContractError::InvalidSearchCount`. Every `GdOperation::Search` constructor, fixture and live probe accepts `SearchCount`, never a bare integer, so the 1–1000 rule cannot be bypassed at the request-rendering boundary.
+
 Run:
 
 ```powershell
@@ -1339,7 +1355,7 @@ Expected: FAIL because `music::contract` does not exist.
 Create `src-tauri/src/music/mod.rs` with `pub mod contract;`, export `pub mod music;` from `lib.rs`, and implement this public surface in `contract.rs`:
 
 ```rust
-use std::{collections::HashSet, fmt::Write};
+use std::{collections::HashSet, fmt::{self, Write}};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -1426,9 +1442,36 @@ impl GdSource {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SearchCount(u16);
+
+impl SearchCount {
+    pub const DEFAULT: Self = Self(20);
+    pub const MIN: u16 = 1;
+    pub const MAX: u16 = 1000;
+    pub const fn get(self) -> u16 { self.0 }
+}
+
+impl TryFrom<u16> for SearchCount {
+    type Error = ContractError;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        (Self::MIN..=Self::MAX)
+            .contains(&value)
+            .then_some(Self(value))
+            .ok_or(ContractError::InvalidSearchCount)
+    }
+}
+
+impl fmt::Display for SearchCount {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum GdOperation {
-    Search { operation: SearchOperation, count: u16, source: GdSource, page: u16, name: EncodedComponent },
+    Search { operation: SearchOperation, count: SearchCount, source: GdSource, page: u16, name: EncodedComponent },
     Url { id: EncodedComponent, source: GdSource, bitrate: u16 },
     Pic { id: EncodedComponent, source: GdSource, size: u16 },
     Lyric { id: EncodedComponent, source: GdSource },
@@ -1460,6 +1503,8 @@ pub fn render_form_body(operation: &GdOperation, signature: &SignatureValue) -> 
 pub enum ContractError {
     #[error("invalid signature")]
     InvalidSignature,
+    #[error("search count must be between 1 and 1000")]
+    InvalidSearchCount,
     #[error("top-level response is not an array")]
     InvalidTopLevel,
     #[error("non-empty response contained no valid songs")]
@@ -1687,13 +1732,18 @@ git add src-tauri/src/music src-tauri/src/lib.rs src-tauri/Cargo.toml src-tauri/
 git commit -m "test: pin GD protocol and pagination contracts"
 ```
 
-### Task 4: 验证零能力签名 WebView 与真实分页
+### Task 4: 验证零应用能力 raw WRY 签名宿主与真实分页
 
 **Files:**
 - Create: `src-tauri/src/feasibility/mod.rs`
 - Create: `src-tauri/src/feasibility/signature_webview.rs`
+- Create: `src-tauri/src/feasibility/signature_host.rs`
+- Create: `src-tauri/src/feasibility/signature_probe.rs`
 - Create: `src-tauri/src/feasibility/webview_resource_policy.rs`
+- Create: `src-tauri/src/feasibility/webview_resource_policy/windows.rs`
+- Create: `src-tauri/src/feasibility/webview_resource_policy/macos.rs`
 - Create: `src-tauri/src/feasibility/gd_live.rs`
+- Modify: `.prettierignore`
 - Modify: `src-tauri/src/lib.rs`
 - Modify: `src-tauri/Cargo.toml`
 - Modify: `src-tauri/Cargo.lock`
@@ -1706,62 +1756,365 @@ git commit -m "test: pin GD protocol and pagination contracts"
 - Modify: `src/vite-env.d.ts`
 - Modify: `scripts/verify-config.mjs`
 - Create: `scripts/verify-default-artifacts.mjs`
+- Create: `scripts/verify-signature-host.mjs`
+- Create: `scripts/verify-signature-host.test.mjs`
+- Create: `scripts/run-signature-lifecycle-probe.mjs`
+- Create: `scripts/run-signature-lifecycle-probe.test.mjs`
+- Modify: `scripts/feasibility-evidence.mjs`
+- Modify: `scripts/feasibility-evidence.test.mjs`
+- Modify: `docs/feasibility/evidence.schema.json`
+- Modify: `docs/feasibility/evidence-scopes.json`
 - Modify: `package.json`
 - Create: `src/lib/feasibility/FeasibilityPanel.svelte`
 - Create: `src/lib/feasibility/GdProbe.svelte`
 - Modify: `src/App.svelte`
 - Modify: `src/App.test.ts`
+- Modify: `README.md`
 - Create: `docs/feasibility/gd-contract-pagination.md`
 - Create: `docs/feasibility/gd-contract-pagination.json`
 - Create: `docs/feasibility/signature-webview.md`
 - Create: `docs/feasibility/signature-webview.json`
 - Create: `docs/decisions/0001-gd-pagination.md`
 - Create: `docs/decisions/0002-signature-webview.md`
-- Modify: `docs/feasibility/evidence-scopes.json`
 
 **Interfaces:**
-- Consumes: Task 3 `EncodedComponent`, `GdOperation`, `PaginationProbe`, `render_form_body`.
-- Produces: `SignatureRuntime::initialize/sign/destroy/retry`, `run_gd_probe`, `SignatureInitReport`, `IsolationReport`, and `ProtocolProbeReport`; no production search command.
+- Consumes: Task 3 `EncodedComponent`、`SearchCount`、`GdOperation`、`PaginationProbe`、`render_form_body`。
+- Produces: concrete `SignatureRuntime` facade、raw WRY host actor、`run_gd_probe`、`SignatureInitReport`、`IsolationReport` and `ProtocolProbeReport`；不产生正式搜索命令。
+- Thread boundary: background tasks normally carry only `AppHandle<tauri::Wry>`、generation/operation IDs、strings、counters and serializable DTOs. The sole host-creation exception is the `Send` Tauri `Window` handle returned by the non-event-loop builder and immediately moved into a UI-thread closure. After that handoff, the host, `wry::WebView`, WebView2 COM and WK/ObjC objects remain in the UI-thread registry for their entire lifetime.
+- Security boundary: pinned WRY 0.55.1 is expected to expose its inert `window.ipc` shim, and the probe must observe it without treating its mere existence as failure. Passing still requires no Tauri globals, no application initialization script, no application-bound IPC handler, no response, no command/event/state side effect, and no capability matching the host.
 
-- [ ] **Step 1: Add feature isolation and write failing origin/eval tests**
+The GD companion's `checks.searchDefaultsAndBounds` is a required exact-key object with `additionalProperties: false`:
 
-Add dependencies and the feature:
+```json
+{
+  "defaultInternalCode": "netease_music",
+  "defaultDisplayName": "网易云音乐",
+  "defaultWireValue": "netease",
+  "defaultCount": 20,
+  "minimumCount": 1,
+  "maximumCount": 1000,
+  "boundaryTestsPassed": true,
+  "singleCount1000RequestedCount": 1000,
+  "singleCount1000ApiRequests": 1
+}
+```
+
+The helper derives the first seven fields from the typed contract test result and the last two from the live case; raw input cannot override constants. Missing/extra fields, a default-source/count mismatch, a renderable value outside 1–1000, or a count-1000 case that made other than one API request fails the GD gate.
+
+**Execution note:** this worktree already contains an interrupted Task 4 draft. Preserve the approved `.prettierignore` change and reusable pure origin/signature/bootstrap/eval/counter tests. Replace the managed-WebView installer and every cross-thread COM/WK guard with patches; do not reset the worktree, discard unrelated user changes, or stage files outside the explicit commit list.
+
+- [ ] **Step 1: Migrate the design/evidence identity and write failing schema tests**
+
+First update the seven common-envelope gates from schema version 1 to 2 and design commit `782b30d8eb1075cce708ddef878cd236d2fa7dc2`. Do not hand-edit any existing companion to make it look current: `docs/feasibility/toolchain-ci.json` and every other old companion remain intentionally stale until Task 10 re-observes and rebuilds all gates. The performance gate remains on its independent schema and is refreshed in Task 10 because its scope/final SHA changes. Keep the Task 3 fixture README's old SHA as the historical source of the protocol fixtures; it is not the current evidence identity.
+
+Add failing tests in `scripts/feasibility-evidence.test.mjs` that require:
+
+```text
+schemaVersion is exactly 2
+designCommit is exactly 782b30d8eb1075cce708ddef878cd236d2fa7dc2
+gd-contract-pagination requires exact checks.searchDefaultsAndBounds and rejects any default/count/live-request mismatch
+signature-webview rejects the legacy ipcBridgeAbsent key
+usesTauriManagedWebView must be false
+all required true/zero/set-valued checks are present with exact types
+resourcePolicyModes values belong to the fixed platform-mode enum
+runtimeModes values are native-host-raw-wry-0.55.1
+webviewRuntimeVersions has the exact four platform keys and nonempty exact versions
+hostPlatform, hostArch, osVersion, binaryTargetOs, binaryTargetArch and translatedProcess match the fixed four-ID host/child matrix
+resourceVectorResults has exactly the fixed unique vector keys and exact per-vector result objects
+resourceVectorsCovered is derived from those keys and is exactly the fixed unique set
+crossOriginCanaryServerHits is exactly 0 on every platform
+checks.byPlatform has exactly the four platform keys and no extra fields
+```
+
+The exact signature checks are:
+
+```text
+rawWryHost=true
+usesTauriManagedWebView=false
+tauriGlobalsAbsent=true
+applicationInitializationScriptsAbsent=true
+applicationIpcHandlerAbsent=true
+inertWryShimPresent=true
+hiddenIpcCanaryDeltaZero=true
+hiddenIpcProducedNoResponse=true
+appStateUnchanged=true
+capabilityMatchAbsent=true
+policyInstalledBeforeFirstNetworkNavigation=true
+officialFinishedBeforePolling=true
+officialOnlyOrigins=true
+storageNonPersistent=true
+newInstanceStorageRecovered=false
+restartStorageRecovered=false
+timeoutCheck=true
+retryCheck=true
+policyFaultInvalidatesInstance=true
+lateCallbackIsolated=true
+destroyConfirmedBeforeRetry=true
+resourcePolicyCleanupAcknowledged=true
+policyTombstonesEmptyBeforeExit=true
+lifecycleNoMonotonicGrowth=true
+noOrphanHostWindows=true
+visibleWindowLeakAbsent=true
+unexpectedActivationAbsent=true
+ordinaryExitCleanupAcknowledged=true
+crossOriginCanaryServerHits=0
+```
+
+The exact resource vector set is:
+
+```text
+document, iframe, script, style, image, media, fetch, xhr,
+worker, service_worker, websocket, sse, beacon, redirect,
+popup, download, top_level_data, top_level_blob, top_level_file,
+top_level_custom_protocol
+```
+
+`checks.byPlatform` is the authoritative observation map. Its keys are exactly the four platform IDs, and each value has exactly this key set with `additionalProperties: false`. This is a Windows-row example; host/child and platform-nullability differences are fixed immediately below:
+
+```json
+{
+  "hostPlatform": "win32",
+  "hostArch": "x64",
+  "osVersion": "10.0.19045",
+  "binaryTargetOs": "windows",
+  "binaryTargetArch": "x86_64",
+  "translatedProcess": null,
+  "webviewRuntimeVersion": "exact nonempty version",
+  "runtimeMode": "native-host-raw-wry-0.55.1",
+  "resourcePolicyMode": "platform-valid fixed enum",
+  "strongSourceKindsInterfaceAvailable": true,
+  "rawWryHost": true,
+  "usesTauriManagedWebView": false,
+  "tauriGlobalsAbsent": true,
+  "applicationInitializationScriptsAbsent": true,
+  "applicationIpcHandlerAbsent": true,
+  "inertWryShimPresent": true,
+  "hiddenIpcCanaryDeltaZero": true,
+  "hiddenIpcProducedNoResponse": true,
+  "appStateUnchanged": true,
+  "capabilityMatchAbsent": true,
+  "policyInstalledBeforeFirstNetworkNavigation": true,
+  "officialFinishedBeforePolling": true,
+  "officialOnlyOrigins": true,
+  "storageNonPersistent": true,
+  "newInstanceStorageRecovered": false,
+  "restartStorageRecovered": false,
+  "timeoutCheck": true,
+  "retryCheck": true,
+  "policyFaultInvalidatesInstance": true,
+  "lateCallbackIsolated": true,
+  "destroyConfirmedBeforeRetry": true,
+  "resourcePolicyCleanupAcknowledged": true,
+  "policyTombstonesEmptyBeforeExit": true,
+  "lifecycleNoMonotonicGrowth": true,
+  "noOrphanHostWindows": true,
+  "visibleWindowLeakAbsent": true,
+  "unexpectedActivationAbsent": true,
+  "ordinaryExitCleanupAcknowledged": true,
+  "crossOriginCanaryServerHits": 0,
+  "blockedCanaryAttempts": 0,
+  "resourceVectorResults": {
+    "document": {
+      "runtimeAttempted": true,
+      "availabilityOutcome": "available",
+      "deterministicBarrierSeamCovered": true,
+      "expectedBarrier": "webview2-web-resource-requested",
+      "enforcedBarrier": "webview2-web-resource-requested",
+      "barrierEvidenceMode": "native-callback",
+      "counterfactualServerHits": null,
+      "allowedRedirectHopHits": 0,
+      "serverHits": 0
+    }
+  }
+}
+```
+
+`resourceVectorResults` contains all 20 exact vector keys listed above, not only the representative `document` entry. Every result object uses the nine exact keys shown and `additionalProperties: false`. `runtimeAttempted`, `deterministicBarrierSeamCovered`, `enforcedBarrier == expectedBarrier` and zero protected `serverHits` are mandatory. `availabilityOutcome` is `available` for every vector except that `service_worker` alone may be `service-worker-api-absent`, and only after the fixed feature-detection expression proves `!("serviceWorker" in navigator)`. A script exception, timeout, rejected promise, CSP/mixed-content/certificate failure or other probe error is never “unavailable”; it fails the row. The absent-service-worker case uses `barrierEvidenceMode=deterministic-seam-only`, `counterfactualServerHits=null` and makes no runtime-interception claim.
+
+Expected barriers are exact and platform-correlated: `document` through `redirect` use `webview2-web-resource-requested` on Windows and `wk-content-rule-list` on macOS; `popup` uses `new-window-handler`; `download` uses `download-handler`; and the four `top_level_*` vectors use `navigation-handler`. For available Windows resource vectors, `barrierEvidenceMode=native-callback`; for available macOS resource vectors, which expose no per-request blocked callback, it is `paired-counterfactual`; handler vectors use `handler-callback`. A macOS paired counterfactual uses the same zero-application-capability raw WK actor and exact trigger twice against controlled local TLS origins: the feature-only unprotected run must produce a positive `counterfactualServerHits`, while the production-policy run has zero `serverHits`. The result deliberately calls the derived value `enforcedBarrier`, not an observed callback. Browser preflight only establishes certificate/network reachability and cannot substitute for this pair.
+
+The `redirect` vector is the only row with `allowedRedirectHopHits=2`: a feature-private test policy allows one controlled TLS origin, `/redirect/one` redirects to `/redirect/two` on that allowed origin, and the second response redirects to the blocked canary; `serverHits` counts only final blocked-origin hits. The counterfactual reaches both allowed hops plus the final canary, while the protected run reaches the two allowed hops and the final origin zero times. Every other row has `allowedRedirectHopHits=0`. The injectable test origin/policy mode is compiled only under `feasibility`, accepts only the runner-owned loopback certificate/origins and is absent from default/live signing paths.
+
+Host and child-binary fields are exact and runner-correlated: both Windows rows use host `win32/x64`, child `windows/x86_64`, and `translatedProcess=null`; `windows-10-webview2-111-x64` additionally requires native OS build `10.0.19045`; `windows-11-x64` requires the frozen observed Windows 11 build and build number at least 22000. `macos-13-intel` uses host `darwin/x64`, child `macos/x86_64`, `translatedProcess=false`, and product version matching `13.3` or `13.3.x`; `macos-current-arm64` uses host `darwin/arm64`, child `macos/aarch64`, `translatedProcess=false`, and a frozen exact product version at least 13.3. `strongSourceKindsInterfaceAvailable` is boolean on Windows and `null` on macOS. `blockedCanaryAttempts` is a nonnegative integer when the platform exposes a reliable native counter and `null` otherwise; it is informational and never substitutes for zero server hits.
+
+The helper derives each platform row's `crossOriginCanaryServerHits` from its 20 protected `serverHits`, derives the top-level value from those four row sums, and rejects disagreement at either level. Counterfactual and allowed-redirect-hop hits are excluded from the protected total but validated by their own exact relations. `resourceVectorsCovered` is derived from `resourceVectorResults` keys and accepted only if every row has the same exact unique set. `runtimeModes`, `resourcePolicyModes` and `webviewRuntimeVersions` are exact four-key objects derived from the corresponding row fields.
+
+Platform correlation is strict:
+
+```text
+windows-10-webview2-111-x64:
+  webviewRuntimeVersion matches 111.0.1661.x;
+  use webview2-22-all-source-kinds when the _22 interface is available,
+  otherwise webview2-legacy-all-contexts-candidate.
+windows-11-x64:
+  exact frozen nonempty runtime version;
+  strongSourceKindsInterfaceAvailable=true;
+  resourcePolicyMode=webview2-22-all-source-kinds.
+macos-13-intel and macos-current-arm64:
+  exact frozen nonempty WebKit version;
+  strongSourceKindsInterfaceAvailable=null;
+  resourcePolicyMode=wk-content-rule-list-exact-origin.
+```
+
+Add an `assertFalseChecks` path for `usesTauriManagedWebView`, `newInstanceStorageRecovered` and `restartStorageRecovered` instead of encoding false as an untyped exception. The schema-v2 common envelope and the gate-specific signature `checks`/`byPlatform`/per-vector branches use `additionalProperties: false`. Rename `filterModes` to `resourcePolicyModes`; the only accepted modes are `webview2-22-all-source-kinds`, `webview2-legacy-all-contexts-candidate` and `wk-content-rule-list-exact-origin`. Add negative tests for missing/extra/wrongly typed keys, missing/extra platform-map/vector entries, wrong host OS/architecture label, swapped Windows/macOS modes, Windows 11 legacy mode, Windows 10 choosing legacy while reporting the strong interface available, Windows 10 choosing v22 while reporting the interface unavailable, any non-service-worker unavailable result, a probe error mislabeled unavailable, wrong evidence/barrier mapping, missing macOS counterfactual, wrong redirect hop counts and any protected per-vector server hit.
+
+Run:
+
+```powershell
+node --test scripts/feasibility-evidence.test.mjs
+```
+
+Expected: FAIL on the old schema/design identity and old signature predicate.
+
+- [ ] **Step 2: Implement schema v2 and a source-level raw-host gate**
+
+Update `evidence.schema.json`, the helper, tests and README to the new design identity. Ordinary `pnpm quality` must continue to test validation mechanics without validating stale committed observations; strict current-scope validation remains Task 10's responsibility.
+
+Create `scripts/verify-signature-host.mjs` and its built-in Node tests. The verifier reads only the Task 4 signature source set and must reject:
+
+```text
+tauri::WebviewWindowBuilder
+tauri::WebviewWindow
+.with_webview( on a Tauri managed WebView
+.with_ipc_handler(
+.with_initialization_script(
+.with_initialization_script_for_main_only(
+.with_custom_protocol(
+.with_asynchronous_custom_protocol(
+unsafe impl Send
+unsafe impl Sync
+```
+
+It must positively require `tauri::window::WindowBuilder`, `wry::WebViewBuilder`, `with_id(SIGNATURE_WEBVIEW_ID)`, `build_as_child`, `run_on_main_thread`, `with_on_page_load_handler`, `SIGNATURE_HOST_WINDOW_LABEL`, the `Pending` and `Destroying` slot states, `WindowEvent::Destroyed`, `maybe_complete_teardown`, `LATE_POLICY_TOMBSTONES`, WebView2's `AddWebResourceRequestedFilterWithRequestSourceKinds` and matching `RemoveWebResourceRequestedFilter`, macOS `WKWebsiteDataStore::nonPersistentDataStore` plus `with_webview_configuration` and store-removal completion marshalled to UI, and every raw-host/probe/policy source file listed in this task. The verifier is a defense-in-depth gate, not a substitute for runtime probes.
+
+Add:
+
+```json
+{
+  "test:signature-host": "node --test scripts/verify-signature-host.test.mjs",
+  "verify:signature-host": "node scripts/verify-signature-host.mjs"
+}
+```
+
+Append `test:signature-host` to `quality` now, but do not append the repository source check until Step 8 makes it green; this keeps the intermediate evidence-contract commit CI-clean while preserving the explicit red source check. Add the helper, tests, all current raw-host/platform-policy files, Cargo/build/config/ACL files and related frontend tests to both the `signature-webview` and `gd-contract-pagination` exact scope arrays; Step 8 adds the newly created lifecycle runner and its tests before the implementation commit. Because the signature facade consumes Task 3 types, the signature scope also contains `src-tauri/src/music/contract.rs`, `src-tauri/src/music/mod.rs`, `src-tauri/tests/gd_contract.rs` and every exact `src-tauri/tests/fixtures/gd/` path enumerated in Task 3's Files list; the final manifest spells out each path and uses no glob. Tests must prove deleting, adding or substituting any one final path fails.
+
+Run:
+
+```powershell
+node --test scripts/feasibility-evidence.test.mjs
+node --test scripts/verify-signature-host.test.mjs
+node scripts/verify-signature-host.mjs
+```
+
+Expected: the first two suites pass; the final command fails because the managed draft has not yet been replaced. This is the recorded red source check and is not yet part of `quality`.
+
+After recording that expected failure, run the intermediate green gate and commit only the evidence-contract/source-gate migration:
+
+```powershell
+pnpm quality
+git add README.md docs/feasibility/evidence.schema.json docs/feasibility/evidence-scopes.json scripts/feasibility-evidence.mjs scripts/feasibility-evidence.test.mjs scripts/verify-signature-host.mjs scripts/verify-signature-host.test.mjs package.json pnpm-lock.yaml
+git commit -m "test: migrate signature host evidence contract"
+```
+
+- [ ] **Step 3: Add exact dependencies and write failing pure/runtime-state tests**
+
+Use optional dependencies so the default artifact has no feasibility implementation. Remove the obsolete `dispatch2` dependency. The feature table must include `tauri/unstable` because Tauri 2.11.5 exposes the bare native `WindowBuilder` through that feature:
 
 ```toml
-futures-util = "0.3"
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls-tls", "stream"] }
-sha2 = "0.10"
-time = { version = "0.3", features = ["formatting"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
-tokio-util = { version = "0.7", features = ["rt"] }
+futures-util = { version = "0.3", optional = true }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "stream"], optional = true }
+sha2 = { version = "0.10", optional = true }
+time = { version = "0.3", features = ["formatting", "parsing"], optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"], optional = true }
+tokio-util = { version = "0.7", features = ["rt"], optional = true }
+wry = { version = "=0.55.1", default-features = false, features = ["os-webview"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
-webview2-com = "0.38"
+webview2-com = { version = "0.38", optional = true }
+windows-core = { version = "0.61", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
-objc2-foundation = "0.3"
-objc2-web-kit = { version = "0.3", features = ["WKContentRuleList", "WKContentRuleListStore", "WKUserContentController", "WKWebView", "WKWebViewConfiguration"] }
+block2 = { version = "0.6", optional = true }
+libc = { version = "0.2", optional = true }
+objc2 = { version = "0.6", optional = true }
+objc2-foundation = { version = "0.3", optional = true }
+objc2-web-kit = { version = "0.3", features = [
+  "WKContentRuleList",
+  "WKContentRuleListStore",
+  "WKUserContentController",
+  "WKWebView",
+  "WKWebViewConfiguration",
+  "WKWebsiteDataStore",
+], optional = true }
 
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-feasibility = []
+feasibility = [
+  "tauri/unstable",
+  "dep:futures-util",
+  "dep:reqwest",
+  "dep:sha2",
+  "dep:time",
+  "dep:tokio",
+  "dep:tokio-util",
+  "dep:wry",
+  "dep:webview2-com",
+  "dep:windows-core",
+  "dep:block2",
+  "dep:libc",
+  "dep:objc2",
+  "dep:objc2-foundation",
+  "dep:objc2-web-kit",
+]
 ```
 
-Write unit tests for `is_allowed_gd_navigation` and `validate_signature_result` before implementing them. Required cases:
+Before implementation, retain or add unit tests for:
 
-```text
-ALLOW https://music.gdstudio.xyz/
-ALLOW https://music.gdstudio.xyz/js/player.js?v=20260616
-DENY  http://music.gdstudio.xyz/
-DENY  https://evil.example/
-DENY  https://music.gdstudio.xyz.evil.example/
-DENY  https://user:pass@music.gdstudio.xyz/
-DENY  https://music.gdstudio.xyz:444/
+- exact official origin and one-use `about:blank` bootstrap;
+- signature return length/control/`&`/`=` validation;
+- self-catching readiness and signing JavaScript;
+- official `Finished` before the first readiness poll;
+- one 20-second initialization deadline shared by host creation, policy preparation, navigation, page finish and 100 ms polling;
+- 5-second signing timeout and late callback isolation by generation plus operation ID;
+- every failure transition poisons the current generation and schedules destruction;
+- cancellation before native host creation returns with a unique host label, a bounded fail-closed destroy result, and mandatory UI destruction if the host arrives late;
+- cancellation during macOS rule compilation with a generation/operation-specific identifier, immediate detachment into a late-result tombstone, and no transition/navigation by that callback;
+- duplicate destroy plus immediate retry pressure still produces exactly one native `WindowEvent::Destroyed` acknowledgement and cannot reuse the old slot;
+- retry increments generation only after a confirmed destroy;
+- inert WRY shim present is allowed, while Tauri globals, an application handler, any response or state delta fails;
+- full resource URL classification plus the exact per-vector attempt/availability/barrier/hit result contract;
+- 20 fake create/destroy cycles return registry/host/process counts to baseline.
+
+Use these public DTOs and facade names:
+
+```rust
+pub const GD_PAGE_URL: &str = "https://music.gdstudio.xyz/";
+pub const SIGNATURE_HOST_WINDOW_LABEL: &str = "gd-signature-host-feasibility";
+pub const SIGNATURE_WEBVIEW_ID: &str = "gd-signature-raw-wry";
+pub const INIT_TIMEOUT: Duration = Duration::from_secs(20);
+pub const CALL_TIMEOUT: Duration = Duration::from_secs(5);
+pub const DESTROY_TIMEOUT: Duration = Duration::from_secs(5);
+pub const MAX_SIGNATURE_BYTES: usize = 128;
+
+pub struct SignatureRuntime {
+    app: tauri::AppHandle<tauri::Wry>,
+    generation: AtomicU64,
+    operation_id: AtomicU64,
+    state: tokio::sync::Mutex<RuntimeState>,
+}
+
+impl SignatureRuntime {
+    pub fn new(app: tauri::AppHandle<tauri::Wry>) -> Self;
+    pub async fn initialize(&self) -> Result<SignatureInitReport, SignatureError>;
+    pub async fn sign(&self, input: &EncodedComponent) -> Result<SignatureValue, SignatureError>;
+    pub async fn run_isolation_probe(&self) -> Result<IsolationReport, SignatureError>;
+    pub async fn destroy(&self) -> Result<(), SignatureError>;
+    pub async fn retry(&self) -> Result<SignatureInitReport, SignatureError>;
+}
 ```
 
-Signature validation accepts 1–128 UTF-8 bytes and rejects control characters, `&`, `=`, empty and 129-byte values. Add pure resource-policy tests that allow network requests only when the URL is HTTPS, has no credentials, uses effective port 443 and has host exactly `music.gdstudio.xyz`; deny lookalike hosts, every other scheme/port, `http://ipc.localhost`, loopback canaries and cross-origin subresources.
+One `IsolationReport` represents one platform observation: it contains generation, operation ID, current/final URL, counters and host labels after destroy plus a nested `checks: PlatformSignatureChecks`. That nested value maps one-to-one, using camelCase Serde names, to `checks.byPlatform[platformId]`; report metadata is stored outside the exact-key checks object. The evidence helper validates all four reports and derives the top-level aggregate fields/maps; Rust does not claim a cross-platform aggregate from one run. A macOS content rule may not expose a per-request blocked counter; never fabricate one or convert `null` to zero.
 
 Run:
 
@@ -1769,392 +2122,348 @@ Run:
 cargo test --manifest-path src-tauri/Cargo.toml --features feasibility signature_webview -- --nocapture
 ```
 
-Expected: FAIL because `feasibility::signature_webview` is absent.
+Expected: FAIL on missing runtime/state-machine behavior, without a cross-thread COM/ObjC type error.
 
-- [ ] **Step 2: Implement the bounded Rust-owned signature runtime**
+- [ ] **Step 4: Implement the UI-thread raw WRY host actor**
 
-Implement this exact public surface:
-
-```rust
-pub const GD_PAGE_URL: &str = "https://music.gdstudio.xyz/";
-pub const SIGNATURE_WEBVIEW_LABEL: &str = "gd-signature-feasibility";
-pub const INIT_TIMEOUT: Duration = Duration::from_secs(20);
-pub const CALL_TIMEOUT: Duration = Duration::from_secs(5);
-pub const MAX_SIGNATURE_BYTES: usize = 128;
-
-#[derive(Clone, Debug, Serialize)]
-pub struct SignatureInitReport {
-    pub generation: u64,
-    pub ready_in_ms: u64,
-    pub final_url: String,
-    pub hidden: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct IsolationReport {
-    pub current_url: String,
-    pub webview_runtime_version: String,
-    pub resource_filter_mode: String,
-    pub has_tauri_internals: bool,
-    pub has_tauri_global: bool,
-    pub has_tauri_ipc: bool,
-    pub has_window_ipc: bool,
-    pub canary_calls_from_hidden_page: u64,
-    pub blocked_navigations: u64,
-    pub blocked_new_windows: u64,
-    pub blocked_downloads: u64,
-    pub blocked_resource_requests: u64,
-    pub resource_canary_hits: u64,
-    pub observed_network_origins: Vec<String>,
-    pub extra_window_labels: Vec<String>,
-    pub passed: bool,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum SignatureError {
-    #[error("signature runtime timed out")]
-    Timeout,
-    #[error("signature page origin was rejected")]
-    OriginRejected,
-    #[error("official signing function is unavailable")]
-    MissingFunction,
-    #[error("official signing function returned invalid data: {0}")]
-    InvalidReturn(&'static str),
-    #[error("signature JavaScript evaluation failed")]
-    Evaluation,
-    #[error("signature WebView failed: {0}")]
-    Webview(String),
-}
-
-pub struct SignatureInstance<R: tauri::Runtime> {
-    webview: tauri::WebviewWindow<R>,
-    resource_policy: ResourcePolicyGuard,
-}
-
-pub struct SignatureRuntime<R: tauri::Runtime> {
-    app: tauri::AppHandle<R>,
-    generation: AtomicU64,
-    instance: tokio::sync::Mutex<Option<SignatureInstance<R>>>,
-}
-
-impl<R: tauri::Runtime> SignatureRuntime<R> {
-    pub fn new(app: tauri::AppHandle<R>) -> Self;
-    pub async fn initialize(&self) -> Result<SignatureInitReport, SignatureError>;
-    pub async fn sign(&self, input: &EncodedComponent) -> Result<SignatureValue, SignatureError>;
-    pub async fn run_isolation_probe(&self) -> Result<IsolationReport, SignatureError>;
-    pub async fn destroy(&self) -> Result<(), SignatureError>;
-    pub async fn retry(&self) -> Result<SignatureInitReport, SignatureError>;
-}
-
-pub async fn eval_json<R: tauri::Runtime, T: serde::de::DeserializeOwned>(
-    webview: &tauri::WebviewWindow<R>,
-    script: String,
-    timeout: Duration,
-) -> Result<T, SignatureError>;
-
-pub struct ResourcePolicyGuard { /* owns native callback/rule-list lifetimes */ }
-
-pub async fn build_hardened_webview<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    label: &str,
-) -> Result<(tauri::WebviewWindow<R>, ResourcePolicyGuard), SignatureError>;
-```
-
-Create the hidden WebView on browser-internal `about:blank`, which performs no network request. Install the resource policy before navigating to the official page; there must be no race in which the official document or any subresource can load first. Build the window only with:
+Implement `signature_host.rs` around a UI-thread TLS registry. A slot exists before any raw child or asynchronous platform-policy work starts, so destroy can own both in-progress and ready generations:
 
 ```rust
-tauri::WebviewWindowBuilder::new(
-    &self.app,
-    SIGNATURE_WEBVIEW_LABEL,
-    tauri::WebviewUrl::External(url::Url::parse("about:blank").expect("constant bootstrap URL must parse")),
-)
-.visible(false)
-.focused(false)
-.skip_taskbar(true)
-.incognito(true)
-.devtools(false)
-.on_navigation(is_allowed_gd_navigation)
-.on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-.on_download(|_, _| false)
+thread_local! {
+    static RAW_SIGNATURE_SLOT: RefCell<MainThreadSignatureSlot> =
+        const { RefCell::new(MainThreadSignatureSlot::Empty) };
+}
+
+enum MainThreadSignatureSlot {
+    Empty,
+    Pending(PendingMainThreadSignatureInstance),
+    Ready(MainThreadSignatureInstance),
+    Destroying(DestroyingMainThreadSignatureInstance),
+}
+
+struct CreationTicket {
+    generation: u64,
+    operation_id: u64,
+    host_label: String,
+    cancelled: AtomicBool,
+    native_destroyed: AtomicBool,
+    native_destroyed_notify: tokio::sync::Notify,
+    teardown_complete: AtomicBool,
+    teardown_notify: tokio::sync::Notify,
+}
+
+struct OperationTicket {
+    generation: u64,
+    operation_id: u64,
+    cancelled: AtomicBool,
+}
+
+struct PendingMainThreadSignatureInstance {
+    generation: u64,
+    operation_id: u64,
+    host: tauri::Window<tauri::Wry>,
+    ticket: Arc<CreationTicket>,
+    builder_spec: RawWebViewBuilderSpec,
+    policy_build: PendingResourcePolicy,
+}
+
+struct MainThreadSignatureInstance {
+    generation: u64,
+    operation_id: u64,
+    host: tauri::Window<tauri::Wry>,
+    webview: wry::WebView,
+    policy: ResourcePolicyGuard,
+    counters: Arc<IsolationCounters>,
+    ticket: Arc<CreationTicket>,
+}
+
+struct DestroyingMainThreadSignatureInstance {
+    generation: u64,
+    operation_id: u64,
+    host_label: String,
+    ticket: Arc<CreationTicket>,
+}
+
+enum RuntimeState {
+    Idle,
+    Creating { ticket: Arc<CreationTicket> },
+    Ready { ticket: Arc<CreationTicket> },
+    Poisoned { ticket: Arc<CreationTicket>, reason: SignatureError },
+    Destroying { ticket: Arc<CreationTicket> },
+    TerminalPoisoned { generation: u64, reason: SignatureError },
+}
+
+#[cfg(target_os = "macos")]
+thread_local! {
+    static LATE_POLICY_TOMBSTONES: RefCell<BTreeMap<(u64, u64), String>> =
+        const { RefCell::new(BTreeMap::new()) };
+}
 ```
 
-The navigation handler permits `about:blank` only as the initial internal bootstrap and otherwise applies the exact official-origin predicate. `build_hardened_webview` retains its guard inside `SignatureInstance` and navigates to `Url::parse(GD_PAGE_URL).expect("constant GD page URL must parse")` only after platform enforcement is active.
+`RawWebViewBuilderSpec` is a pure UI-registry value containing the fixed ID/URL/settings and callback generation IDs, not a `wry::WebViewBuilder` or native object. `PendingResourcePolicy` is a `cfg`-split, deliberately non-`Send` UI-thread type. On macOS it owns the fresh `WKWebViewConfiguration`, the in-flight compilation state and the unique rule-list identifier `yinmi-gd-signature-{generation}-{operation_id}`; on Windows it records the synchronous registration phase. The native host label is also unique: `format!("{SIGNATURE_HOST_WINDOW_LABEL}-{generation}-{operation_id}")`; the public constant is a prefix, never a reused full label. Every active `RuntimeState` variant owns the same creation ticket, and every transition validates its generation before replacement. No code may hold the async state mutex across `spawn_blocking`, `run_on_main_thread`, a oneshot, `Notify` or a destroy-event wait; it clones the ticket, releases the mutex, awaits, then reacquires and revalidates generation/state before committing the result.
 
-`WebviewWindowBuilder::on_web_resource_request` is not sufficient because Tauri documents that it does not run for external URLs. The policy implementation is therefore platform-native and must be installed before the first network navigation:
+`CreationTicket` is only for initialization and native-host lifetime. It has separate acquire/release flags and `Notify` loops for `native_destroyed` and composite `teardown_complete`. The exact host `WindowEvent::Destroyed` path may acknowledge only the first flag after manager absence; `maybe_complete_teardown` may acknowledge the second only when native destruction, manager absence, platform-policy cleanup and zero generation tombstones are all true. macOS rule-store completion blocks never mutate TLS directly: they schedule a generation-checked UI-main-thread closure, which clears the tombstone, records cleanup acknowledgement and calls `maybe_complete_teardown`. Each `sign()` or other evaluation allocates a Send-only `Arc<OperationTicket>` after incrementing `operation_id`; its callback checks cancellation plus generation/operation equality, and the awaiting task revalidates the current `Ready` state after reacquiring the mutex. Both ticket waits use the standard register-notified/recheck loop, so duplicate destroy callers cannot miss or duplicate either barrier. Raw WRY, COM and ObjC objects may never be returned through a Tokio channel. The Tauri host handle is the single explicit exception during worker-side host creation; it is immediately consumed by the UI handoff. Every raw create/evaluate/current-URL/destroy operation after that handoff calls `AppHandle::run_on_main_thread`; oneshots return only `Result<()>`, strings or serializable metadata. Never add an unsafe `Send`/`Sync` implementation.
 
-```text
-Windows/WebView2: build hidden about:blank -> with_webview -> query runtime/interface version -> install the strongest available native filter -> navigate.
-When `ICoreWebView2_22` exists, call `AddWebResourceRequestedFilterWithRequestSourceKinds("*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL, COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL)` and handle `WebResourceRequested`. On the supported 111 baseline, use the legacy two-argument `ICoreWebView2::AddWebResourceRequestedFilter("*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL)` only as a compatibility candidate; never label it equivalent by assumption. Every raised URL is checked, and a disallowed URL receives a synthetic empty 403 response and increments the counter.
+Creation order is fixed:
 
-macOS/WKWebView: compile a WKContentRuleList before construction -> attach it to the WKUserContentController through the target-gated `with_webview_configuration` builder extension -> build hidden about:blank -> navigate;
-the rule blocks every network URL unless the domain is exactly music.gdstudio.xyz. Keep the compiled rule list for the WebView lifetime.
-```
+1. Before starting `tokio::task::spawn_blocking`, publish `RuntimeState::Creating` with its ticket and unique label. In the blocking task call `tauri::window::WindowBuilder` to create a 1×1 invisible, unfocused, unfocusable, undecorated, shadowless, nonresizable native host with no managed WebView. Apply `skip_taskbar(true)` only on Windows. Tauri window creation must not originate on the event-loop thread because that request can deadlock. If it fails before a native window exists, mark teardown complete. If cancellation or the bounded destroy deadline wins, any host that arrives later is still handed to UI and destroyed under its unique label; the runtime remains fail-closed and never reuses that generation.
+2. Move the host into a UI-main-thread closure, atomically require `Empty`, and insert `Pending` with the pure builder spec before constructing raw WRY or starting policy compilation. The spec fixes `SIGNATURE_WEBVIEW_ID`, `about:blank`, invisible/unfocused/devtools-off, incognito, clipboard/autofill disabled, exact navigation handling, denied new windows/downloads and page-load handler IDs. It contains no initialization script, IPC handler or custom protocol. Never keep a live `wry::WebViewBuilder` across the asynchronous macOS compile or capture it in an Objective-C block.
+3. Windows sequence: materialize `wry::WebViewBuilder::new().with_id(SIGNATURE_WEBVIEW_ID)` from the spec, apply Windows settings that disable browser accelerator keys and default context menus, and call `build_as_child(&host)` for the internal `about:blank` child; obtain the native WebView2 interfaces; install and acknowledge the filter/handler; atomically transition the same generation/operation from `Pending` to `Ready`; only then call `load_url(GD_PAGE_URL)`. Acquire-check cancellation after raw build, after interface lookup, after filter/handler registration, before the transition and immediately before navigation. Any cancelled check locally reverses installed native state, drops raw WRY, enters `Destroying` and never loads a URL.
+4. macOS sequence: while the slot remains `Pending`, create the custom WK configuration on the UI thread, set its explicit nonpersistent store and start compilation under the generation/operation-specific rule identifier. The completion block looks up the exact pending slot, acquire-checks cancellation, attaches the returned rule, materializes a fresh WRY builder from the stored pure spec, applies the configuration with `with_webview_configuration`, acknowledges policy ready and builds the `about:blank` child. It acquire-checks again before transition and before `load_url(GD_PAGE_URL)`; cancellation detaches/removes the rule, tombstones store removal, drops local native objects and destroys the host. WRY's incognito flag alone is not evidence on this custom-configuration path.
+5. The one-use internal `about:blank` bootstrap is the only pre-policy navigation and performs no network request. Any official, external or otherwise network-capable navigation before platform policy acknowledgement is a test failure; the bootstrap allowance is consumed and cannot authorize a second navigation. Accept only the current generation's official-page `PageLoadEvent::Finished`; ignore `about:blank` and stale events. Start callback-based 100 ms readiness polling only after that event.
 
-If either native control cannot be installed before the first network request on a supported platform, the result is not `pass`. In particular, the Windows 111 row must prove that the legacy filter catches every adversarial request source; if a nested-frame request bypasses it, stop with `design-change-required` and amend the design mechanism or minimum runtime instead of silently raising the runtime floor. Do not replace request-level enforcement with post-load `performance` inspection; observations are additional evidence only.
+The single `Arc<CreationTicket>` is the cancellation and composite teardown barrier for a generation. Timeout marks it cancelled before requesting cleanup. `destroy()` clones the ticket and records cancellation under the async state mutex, releases that mutex, schedules UI cleanup and waits at most `DESTROY_TIMEOUT` for `teardown_complete`. Destroying `Pending` immediately detaches and drops its configuration on UI, records the unique macOS rule ID in `LATE_POLICY_TOMBSTONES` if compilation is outstanding, transitions the slot to `Destroying`, and queues `host.destroy()`; it never blocks the UI thread on the compile callback. A late callback captures only generation, operation ID and rule ID. It must not build WRY, navigate or inspect a newer slot. A compile error returns through a UI closure that records policy cleanup and clears the tombstone; a late success drops the returned rule on UI, requests store removal by the old identifier, and clears the tombstone only from that removal completion on UI. Retry and application-owned exit both require native destroy acknowledgement, manager absence, policy-store cleanup acknowledgement and zero tombstones for that generation. If any part does not drain within `DESTROY_TIMEOUT`, transition to `TerminalPoisoned`, return a bounded error and keep the app open instead of hanging or leaving a persistent rule behind.
 
-`eval_json` must wrap `eval_with_callback` in a Tokio oneshot and `tokio::time::timeout`; ignore callbacks arriving after timeout. Windows does not propagate JavaScript exceptions, so sign with this self-catching script, after replacing `ENCODED_INPUT_JSON` using `serde_json::to_string(input.as_str())`:
+`tauri::Window::destroy()` is only a queued request, never the acknowledgement. Dropping/detaching a `Ready` or `Pending` instance transitions TLS to `Destroying` before calling it. The `RunEvent::WindowEvent` handler matches the exact unique host label and `WindowEvent::Destroyed`, then schedules one next UI turn to prove `app.get_window(label).is_none()`; that verified path acknowledges native/manager removal and calls `maybe_complete_teardown`, but cannot set `Empty` while platform cleanup or a tombstone remains. Only the generation-checked composite completion path may set `Empty`, complete `teardown_complete` and release destroy/exit callers. If no verified native event or policy-store completion arrives within `DESTROY_TIMEOUT`, `destroy()` returns a stable timeout error, stores `TerminalPoisoned`, forbids retry and lets the exit coordinator keep the app open. A builder or policy callback that returns after this terminal timeout still hands its unique native state to UI cleanup; completing teardown may permit a later close attempt, but can never make the poisoned runtime reusable. Page events and evaluation callbacks check their correct ticket, generation and operation ID and return without state mutation.
+
+The signing expression remains self-catching because Windows does not reliably surface JavaScript exceptions:
 
 ```js
 (() => {
   try {
     const fn = globalThis.crc32;
-    if (typeof fn !== 'function') return { status: 'error', code: 'MISSING_FUNCTION' };
+    if (typeof fn !== "function") return { status: "error", code: "MISSING_FUNCTION" };
     const value = fn(ENCODED_INPUT_JSON);
-    if (typeof value !== 'string') return { status: 'error', code: 'INVALID_TYPE' };
-    if (value.length === 0) return { status: 'error', code: 'EMPTY_VALUE' };
-    if (new TextEncoder().encode(value).byteLength > 128) return { status: 'error', code: 'RETURN_TOO_LARGE' };
-    return { status: 'ok', value };
+    if (typeof value !== "string") return { status: "error", code: "INVALID_TYPE" };
+    if (value.length === 0) return { status: "error", code: "EMPTY_VALUE" };
+    if (new TextEncoder().encode(value).byteLength > 128) {
+      return { status: "error", code: "RETURN_TOO_LARGE" };
+    }
+    return { status: "ok", value };
   } catch (_) {
-    return { status: 'error', code: 'CALL_THROWN' };
+    return { status: "error", code: "CALL_THROWN" };
   }
 })()
 ```
 
-Rust must repeat byte/control/`&`/`=` validation. Any init or call failure invalidates and destroys the instance; `retry()` destroys before creating a new generation. Never implement CRC32 locally.
+Replace `ENCODED_INPUT_JSON` with `serde_json::to_string(input.as_str())` and repeat all Rust-side validation. Any initialization, policy or signing failure poisons the generation and invokes the same main-thread destroy path.
 
-`initialize()` polls only the fixed self-catching readiness expression for `globalThis.crc32` at 100 ms intervals inside the single 20-second deadline. It succeeds only after the current URL still passes `is_allowed_gd_navigation`; a page-load event alone is not readiness.
+For `Ready`, destroy order is fixed: transition out of `Ready`; on Windows remove and acknowledge the exact filter tuple/handler; on macOS remove the controller rule and place its unique store identifier into the same removal-completion tombstone path; drop raw WRY; enter `Destroying`; queue `host.destroy()`; then await composite teardown. Native host destruction and asynchronous store removal may finish in either order, but both acknowledgements plus zero tombstones are mandatory before `Empty`, retry, install or exit. For `Pending`, detach/tombstone unfinished work before the same `Destroying` path. Add deterministic seams for cancellation before host creation returns, cancellation after each Windows native step, cancellation during macOS compilation/build, late success/error completion, Ready-store removal completion/failure, store callback delivered off-main then marshalled to UI, missing/delayed native destroy, duplicate destroy, exit pressure and retry pressure; every case must prove one composite teardown acknowledgement and no old-generation transition/navigation.
 
-- [ ] **Step 3: Lock custom commands to the local main window**
+Handle ordinary shutdown explicitly. Task 4 adds a minimal signature-only background exit coordinator around the same public `SignatureRuntime::destroy()` future; Task 8 later composes that hook into the unified music/updater barrier instead of adding a second cleanup path. The `main` window's `CloseRequested` calls `prevent_close()` and only queues this coordinator while any signature slot/ticket is active. A defensive `main` `Destroyed` handler also initiates teardown if another code path destroyed it first. `RunEvent::ExitRequested` calls `prevent_exit()` when cleanup is active and reissues programmatic exit only after composite teardown proves verified host destruction/manager absence, policy-store cleanup, zero tombstones and TLS `Empty`. `RunEvent::Exit` is final: it performs idempotent UI-thread detach/drop without waiting for callbacks and is expected to observe both `Empty` and zero policy tombstones for every application-owned exit. Add an active-signature-host main-close integration test proving no hidden host/rule entry keeps the process alive and no UI-thread wait occurs.
 
-Replace `build.rs` with a feature-gated ACL manifest. The default build generates no feasibility command identifiers:
+- [ ] **Step 5: Implement native resource enforcement before first network navigation**
+
+In `webview_resource_policy.rs` define pure URL classification, `IsolationCounters`, `ResourcePolicyMetadata` and a deliberately non-`Send` `ResourcePolicyGuard`. Allow only HTTPS, no credentials, effective port 443 and host exactly `music.gdstudio.xyz`. The navigation handler separately allows the single internal bootstrap and rejects top-level `data:`, `blob:`, `file:` and custom protocols.
+
+Windows implementation:
+
+- obtain the controller/environment/core WebView through `wry::WebViewExtWindows`;
+- prefer `ICoreWebView2_22::AddWebResourceRequestedFilterWithRequestSourceKinds` with all contexts and all source kinds;
+- only on the WebView2 111 baseline, allow the legacy all-context filter as `webview2-legacy-all-contexts-candidate`;
+- return a synthetic empty 403 for every disallowed raised request;
+- retain the handler registration token plus the exact filter URI/context/source-kinds/mode tuple on the UI thread, then call the matching `RemoveWebResourceRequestedFilter*` overload with that tuple before removing the handler token; WebView2 filters themselves have no token;
+- any registration, callback or response-construction fault poisons and destroys the instance.
+
+macOS implementation:
+
+- create a fresh `WKWebViewConfiguration` on the UI thread;
+- explicitly set `WKWebsiteDataStore::nonPersistentDataStore`; WRY's incognito flag is insufficient when a custom configuration is supplied;
+- compile the exact-origin `WKContentRuleList` asynchronously, attach it to the configuration's user-content controller, and acknowledge success before raw WRY construction/navigation;
+- use WRY `WebViewBuilderExtMacos::with_webview_configuration`;
+- keep configuration, controller rule, rule-list store and unique identifier in the TLS guard; Ready destroy removes the controller rule, requests store removal by identifier and clears its tombstone only on removal completion;
+- invoke compilation from the UI thread and require the completion block to obtain/assert an Objective-C main-thread marker before it touches the configuration, rule or TLS. A callback without that marker fails closed and triggers host cleanup; the block sends only a `Send` acknowledgement/error and never sends a retained WK object.
+
+Add tests for policy JSON, mode selection, 403 behavior through a seam, handler-token plus exact-filter-tuple uninstall, compilation failure, generation-specific rule identifiers/tombstones, Pending/Ready store-removal completion, destroy-during-compilation native-window acknowledgement ordering, late completion cancellation and policy-fault poisoning. On WebView2 111, any missing resource source is `design-change-required`, not permission to raise the runtime floor silently.
+
+Run:
+
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml --features feasibility signature_webview -- --nocapture
+node scripts/verify-signature-host.mjs
+```
+
+Expected: all pure/actor/platform-seam tests and the source gate pass on the current platform.
+
+- [ ] **Step 6: Add isolation, persistence and lifecycle probes**
+
+First write `scripts/run-signature-lifecycle-probe.test.mjs` for exact two-phase event grammar, nonce generation/exact matching/replay rejection, monotonic ordinals, external-only process-exit event, clean child exit, 60/130-second deadline handling, marker/path/endpoint redaction and bad/missing/extra phase rejection, then run it once and record the expected failure because the runner is absent:
+
+```powershell
+node --test scripts/run-signature-lifecycle-probe.test.mjs
+```
+
+Implement the runner and `signature_probe.rs` to make that test pass. Establish the Rust IPC-canary baseline by proving the local main window can increment it, then reset/snapshot it. From the hidden raw WRY page:
+
+- assert Tauri named globals and any own property containing `tauri` are absent;
+- observe the WRY 0.55.1 inert `window.ipc` shim, post a unique payload if callable, wait a bounded interval and prove there is no response;
+- prove the application handler is unconfigured, hidden-page canary delta is zero and application state/event/command snapshots are unchanged;
+- prove `host.webviews().is_empty()` while the raw child exists.
+
+Freeze these exact triggers; the probe may not substitute a different browser primitive under the same token:
+
+```text
+document: append <object type="text/html" data=BLOCKED_HTTPS_URL>
+iframe: append <iframe src=BLOCKED_HTTPS_URL>
+script: append <script src=BLOCKED_HTTPS_URL>
+style: append <link rel="stylesheet" href=BLOCKED_HTTPS_URL>
+image: set new Image().src = BLOCKED_HTTPS_URL
+media: append <audio preload="auto" src=BLOCKED_HTTPS_URL> and call load()
+fetch: await fetch(BLOCKED_HTTPS_URL, { mode: "no-cors", cache: "no-store" })
+xhr: XMLHttpRequest GET BLOCKED_HTTPS_URL
+worker: create a blob Worker whose only statement is importScripts(BLOCKED_HTTPS_URL)
+service_worker: from the controlled allowed TLS page, register same-origin /sw.js; its install handler fetches BLOCKED_HTTPS_URL
+websocket: new WebSocket(BLOCKED_WSS_URL)
+sse: new EventSource(BLOCKED_HTTPS_SSE_URL)
+beacon: navigator.sendBeacon(BLOCKED_HTTPS_URL, one fixed byte)
+redirect: fetch ALLOWED_HTTPS_URL/redirect/one, which redirects through /redirect/two to BLOCKED_HTTPS_URL
+popup: window.open(BLOCKED_HTTPS_URL, "_blank", "noopener")
+download: click a connected <a download href=BLOCKED_HTTPS_URL>
+top_level_data: location.assign("data:text/html,yinmi-probe")
+top_level_blob: create one text/html Blob URL, call location.assign(url), then revoke it
+top_level_file: location.assign("file:///yinmi-feasibility-denied")
+top_level_custom_protocol: location.assign("yinmi-feasibility-denied://probe")
+```
+
+Run an OS-assigned loopback canary server with the exact HTTP(S), two-hop redirect, SSE, WebSocket/WSS and service-worker-support routes above. Use an ignored per-run test certificate/root trusted only on the controlled VM, prove HTTPS/WSS reachability with a browser preflight, reset the protected counters, and remove the temporary trust after capture; this prevents mixed-content or certificate rejection from masquerading as enforcement. The feature-only counterfactual uses the same raw actor, trigger and controlled origins without the production resource rule; it has no app handler/capability and is destroyed before the protected generation. On macOS every available resource vector must first reach its counterfactual canary, then produce zero protected hits with the exact rule attached. The protected redirect must reach both allowed hops and stop before the final canary. For every vector emit the exact `resourceVectorResults` row: attempt, availability outcome, deterministic seam, expected/enforced barrier, evidence mode, counterfactual hits, allowed redirect hops and protected hits. Count server observations, not merely JavaScript errors or browser performance entries. Windows blocked-attempt counters may be positive; macOS may have no per-request counter. Passing requires zero protected blocked-origin hits, official-only network origins in the real signing generation and no popup/download/top-level scheme escape.
+
+For persistence, write a unique Cookie/cache/Web Storage marker, destroy and create a new instance; the new instance may not read it. For lifecycle, run 20 initialize/sign/destroy/retry cycles, then 10 minutes idle plus sleep/wake. Compare native host labels, late-policy tombstones, browser-process counts and the macOS rule-list store identifiers matching `yinmi-gd-signature-*` to a pre-probe baseline: no monotonic growth or leftover prefix entry, no orphan host, no taskbar/window flash and no unexpected macOS activation.
+
+`feasibility_signature_isolation` takes no caller-selected fault name. It internally runs the fixed private in-process scenario set `policy-registration-fault`, `initialization-finished-delay-past-20s`, `sign-callback-delay-past-5s`, `destroy-during-pending-policy`, `late-callback-after-new-generation` and `main-close-state-machine-seam`. The last item stops at the pure/coordinator would-exit boundary and does not claim a real process close. The feature-only injector is below the runtime facade and unavailable in the default build. Each scenario emits its fixed ID, generation/operation IDs, ordered actor events and terminal state; the report booleans are derived from those traces. Unit tests use paused time, while platform evidence exercises the real 20/5-second boundaries and native host-destroy acknowledgement.
+
+Cross-process restart and ordinary-exit evidence comes from `scripts/run-signature-lifecycle-probe.mjs`, never from the in-process command. Its tested CLI accepts one exact `--app` path, one of the four signature platform IDs and an ignored `--output` below `artifacts/feasibility/signature/`. Before spawn it derives `process.platform`/`process.arch`, obtains Windows `os.release()` or macOS `/usr/bin/sw_vers -productVersion`, and checks the host half of the exact correlation above. The runner binds an OS-assigned loopback recorder, generates a fresh 128-bit lowercase-hex nonce and launches the feature child with exactly `YINMI_FEASIBILITY_SIGNATURE_AUTORUN=write-marker-and-close-main|verify-marker-absent`, `YINMI_FEASIBILITY_SIGNATURE_TRACE_ENDPOINT=<runner endpoint>` and `YINMI_FEASIBILITY_SIGNATURE_RUN_ID=<nonce>`.
+
+Each child must first post once to the derived fixed `/process-info` endpoint with exact body `{runId,phase,binaryTargetOs,binaryTargetArch,translatedProcess}`. The two target strings come from Rust `std::env::consts`; on macOS the feature-only native helper calls `libc::sysctlbyname` for `sysctl.proc_translated`, treats a nonzero integer as translated, treats `ENOENT` as native/nontranslated, and fails closed on other errors or malformed values, while Windows reports `null`. The runner requires both phases to agree and validates child target, Node host and platform ID three ways; a Rosetta-translated process or any Windows/Intel/ARM mismatch fails before lifecycle events are accepted. The sanitized output carries all six host/child fields, and the evidence helper requires equality with its platform row. The event server exact-matches nonce/phase and accepts at most 4 KiB of `{runId, phase, event}` with no extra keys; process-info has the same 4 KiB cap and exact-key/replay checks. Neither child may submit `process-exit-observed`; the runner appends it as the next ordinal only after a zero-code, non-forced child exit.
+
+After process-info acknowledgement, Phase 1's exact event grammar is `process-started`, `active-host-ready`, `marker-written`, `main-close-requested`, `host-destroyed`, `manager-host-absent`, `policy-cleanup-acknowledged`, `policy-tombstones-empty`, `tls-entry-absent`, `app-exit-invoked`, then external `process-exit-observed`. Phase 2 replaces only `marker-written` with `marker-absent`. All ordinals are strictly increasing and each name appears once. Store-removal callbacks must marshal to the UI thread before the last three cleanup events can be emitted. Each phase has a 60-second deadline and the two-phase run a 130-second total deadline; timeout saves a sanitized diagnostic, force-kills for local cleanup, records failure and exits nonzero. The runner writes both traces for the evidence helper but omits nonce, endpoint, absolute app path and marker value. Config/default-artifact tests prove all three autorun variables and child modes are feature-only.
+
+Add `"test:signature-lifecycle-runner": "node --test scripts/run-signature-lifecycle-probe.test.mjs"` to package scripts and append it to `quality` before Step 8. Its tests include wrong host/child architecture combinations, missing/duplicate process-info, Rosetta translation, missing policy cleanup/tombstone events, trace grammar, nonce, deadline and redaction; this makes those checks part of ordinary CI and Task 10, not only a manual Task 4 command.
+
+Policy faults, timeouts and deliberately delayed callbacks must invalidate the instance. Each negative test must confirm verified native destroy acknowledgement before retry and must show that the stale callback cannot change the new generation. A late macOS policy tombstone must drain before retry or produce the bounded `TerminalPoisoned` result; it may never create an unbounded wait.
+
+- [ ] **Step 7: Lock feature ACL/UI and fixed GD live probes**
+
+Keep the default build free of all feasibility commands. The feature-only command manifest contains only:
+
+```text
+feasibility_signature_initialize
+feasibility_signature_sign
+feasibility_signature_destroy
+feasibility_signature_isolation
+feasibility_run_gd_probe
+feasibility_ipc_canary
+```
+
+`feasibility-main.json` is local-only, matches exactly `["main"]` and grants only `core:default` plus the feature permission. Neither config/capability may contain `remote`, `urls`, wildcard windows, the host label or raw WebView ID. The hidden native host has no Tauri-managed WebView and therefore no capability consumer.
+
+Use Vite feasibility mode for dynamic frontend import; normal-mode tests prove the panel is absent. `verify-default-artifacts.mjs` rejects `FeasibilityPanel`, `GdProbe`, the host label, raw ID, `feasibility_` and `YINMI_FEASIBILITY_` from completed default frontend/Tauri artifacts.
+
+Keep exactly the three Task 3 live cases:
 
 ```rust
-fn main() {
-    let commands: &[&str] = if std::env::var_os("CARGO_FEATURE_FEASIBILITY").is_some() {
-        &[
-            "feasibility_signature_initialize",
-            "feasibility_signature_sign",
-            "feasibility_signature_destroy",
-            "feasibility_signature_isolation",
-            "feasibility_run_gd_probe",
-            "feasibility_ipc_canary",
-        ]
-    } else {
-        &[]
-    };
-
-    tauri_build::try_build(
-        tauri_build::Attributes::new().app_manifest(
-            tauri_build::AppManifest::new().commands(commands),
-        ),
-    )
-    .expect("failed to build Tauri ACL manifest");
-}
-```
-
-Create `src-tauri/permissions/feasibility.toml`:
-
-```toml
-[[permission]]
-identifier = "allow-feasibility-commands"
-description = "Allows phase-one probes from the local main window only"
-commands.allow = [
-  "feasibility_signature_initialize",
-  "feasibility_signature_sign",
-  "feasibility_signature_destroy",
-  "feasibility_signature_isolation",
-  "feasibility_run_gd_probe",
-  "feasibility_ipc_canary",
-]
-```
-
-Create `src-tauri/capabilities/feasibility-main.json`:
-
-```json
-{
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "feasibility-main",
-  "description": "Phase-one probes exposed only to the local main window",
-  "local": true,
-  "windows": ["main"],
-  "permissions": ["core:default", "allow-feasibility-commands"]
-}
-```
-
-Keep the default config on `["main-capability"]`. Create this overlay as `src-tauri/tauri.feasibility.conf.json`:
-
-```json
-{
-  "$schema": "https://schema.tauri.app/config/2",
-  "build": {
-    "beforeDevCommand": "pnpm vite --mode feasibility",
-    "beforeBuildCommand": "pnpm vite build --mode feasibility"
-  },
-  "app": {
-    "security": {
-      "capabilities": ["feasibility-main"]
-    }
-  }
-}
-```
-
-Replace `vite.config.ts` with:
-
-```ts
-import tailwindcss from '@tailwindcss/vite';
-import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { defineConfig } from 'vitest/config';
-
-export default defineConfig(({ mode }) => ({
-  plugins: [tailwindcss(), svelte()],
-  define: { __FEASIBILITY__: JSON.stringify(mode === 'feasibility') },
-  clearScreen: false,
-  server: { port: 1420, strictPort: true },
-  build: { target: ['chrome111', 'safari16.4'] },
-  test: {
-    environment: 'jsdom',
-    setupFiles: ['src/test/setup.ts'],
-    include: ['src/**/*.test.ts'],
-  },
-}));
-```
-
-Declare `const __FEASIBILITY__: boolean` in `src/vite-env.d.ts`. In `App.svelte`, call `import('./lib/feasibility/FeasibilityPanel.svelte')` only inside `if (__FEASIBILITY__)`; render the resolved component below the product shell. The normal-mode test asserts the feasibility panel is absent, while a feasibility-mode test imports the panel directly. Every Rust feasibility module, command registration, managed state, and updater plugin registration must be below `#[cfg(feature = "feasibility")]`.
-
-Neither config may contain `remote`, `urls`, a wildcard window, or the hidden WebView label. Extend `scripts/verify-config.mjs` to parse both configs and every capability, assert the two exact capability lists, and fail if `gd-signature-feasibility`, `remote`, `urls`, or `"*"` appears. Add an IPC canary command with an atomic counter; the main window must increment it. From the hidden page, enumerate `__TAURI_INTERNALS__`, `__TAURI__`, `__TAURI_IPC__`, `__TAURI_INVOKE__`, `window.ipc` and any own property containing `tauri` or `ipc`, then attempt the fixed canary through every discovered callable path. Passing requires every named bridge probe to be absent and the Rust counter to remain zero. “Bridge exists but ACL rejects the command” is a failure because the design requires no IPC injection, not merely zero permission.
-
-Run a local resource canary server on an OS-assigned loopback port. Controlled eval creates direct `fetch` and image requests, a same-page `srcdoc` iframe that creates its own fetch/image requests, a nested `srcdoc` iframe that repeats them, and an HTTPS cross-origin iframe/navigation request. Passing requires zero server hits from every depth, blocked/error results in the page, and every `PerformanceResourceTiming` network origin to equal `https://music.gdstudio.xyz`. This observation supplements the native enforcement; it cannot replace it.
-
-Add package script `"verify:default-artifacts": "node scripts/verify-default-artifacts.mjs"`. The script requires a completed default frontend and debug Tauri build, recursively reads `dist` plus `src-tauri/target/debug/yinmi.exe` on Windows or `src-tauri/target/debug/yinmi` on macOS, and rejects these UTF-8 byte strings: `FeasibilityPanel`, `GdProbe`, `gd-signature-feasibility`, the generic command prefix `feasibility_`, and the environment prefix `YINMI_FEASIBILITY_`. Missing artifacts also fail.
-
-- [ ] **Step 4: Write the failing fixed-case live probe tests**
-
-Define exactly three probe cases and reports:
-
-```rust
-#[derive(Clone, Copy, Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProtocolProbeCase { SingleCount1000, PagedOfficial20, RepeatSamePage }
-
-pub const PROBE_KEYWORD: &str = "周杰伦";
-
-#[derive(Clone, Debug, Serialize)]
-pub struct ProtocolProbeReport {
-    pub started_at: String,
-    pub page_version: &'static str,
-    pub probe_case: ProtocolProbeCase,
-    pub requested_target: usize,
-    pub upstream_count: u16,
-    pub pages_requested: u16,
-    pub raw_records: usize,
-    pub valid_records: usize,
-    pub unique_records: usize,
-    pub duplicate_records: usize,
-    pub invalid_records: usize,
-    pub stop_reason: StopReason,
-    pub incomplete: bool,
-    pub elapsed_ms: u64,
-    pub response_digests: Vec<String>,
+pub enum ProtocolProbeCase {
+    SingleCount1000,
+    PagedOfficial20,
+    RepeatSamePage,
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum GdProbeError {
-    #[error(transparent)]
-    Signature(#[from] SignatureError),
-    #[error(transparent)]
-    Contract(#[from] ContractError),
-    #[error("bounded network request failed")]
-    Network,
-    #[error("upstream rate limited the probe")]
-    RateLimited { retry_after_seconds: Option<u64> },
-    #[error("upstream returned a non-success HTTP status")]
-    HttpStatus,
-    #[error("probe was cancelled")]
-    Cancelled,
-}
-
-pub async fn run_gd_probe<R: tauri::Runtime>(
-    runtime: &SignatureRuntime<R>,
+pub async fn run_gd_probe(
+    runtime: &SignatureRuntime,
     probe_case: ProtocolProbeCase,
-    cancel: &tokio_util::sync::CancellationToken,
+    cancel: &CancellationToken,
 ) -> Result<ProtocolProbeReport, GdProbeError>;
 ```
 
-Tests must reject arbitrary URLs, keywords, sources, counts and page limits. The only keyword is `周杰伦` and the only source is `netease`; the three cases resolve to:
+The only keyword is `周杰伦`. Every case constructs the source as `GdSource::DEFAULT` and asserts its rendered wire value is `netease`; every count is created with `SearchCount::try_from`, including the upper-bound value 1000:
 
 ```text
 single_count_1000: count=1000, page=1, one API request
-paged_official_20: count=20, pages=1..=50, >=6500 ms between API requests
-repeat_same_page: count=20, page=1 twice, >=6500 ms between requests
+paged_official_20: count=20, pages=1..=50, at least 6500 ms between starts
+repeat_same_page: count=20, page=1 twice, at least 6500 ms between starts
 ```
 
-Use a private transport seam to add deterministic HTTP-boundary tests: `429` with numeric/date/missing `Retry-After` maps to `RateLimited` without retaining its body; another non-2xx status maps to `HttpStatus`; and a streamed response of exactly `5 MiB + 1 byte` aborts before the extra byte reaches the parser. Error `Display`/debug reports and frontend payloads must not contain the fixture body. These tests run locally and do not call GD.
+The private HTTP seam tests numeric/date/missing `Retry-After`, another non-2xx status, cancellation and a streamed 5 MiB + 1 response. Build reqwest with redirects/proxy disabled, `tls_backend_rustls()`, 10-second connect and 30-second total timeouts. Never automatically retry 429, retain raw bodies, log signatures/full form bodies or run live GD in unit tests/CI.
 
-`started_at` is UTC RFC 3339 with second precision, `page_version` is the literal `2026.06.16`, and every digest is lowercase SHA-256 hex.
+- [ ] **Step 8: Verify and commit the clean implementation checkpoint**
 
-Expected before implementation: tests fail because `run_gd_probe` is absent.
-
-- [ ] **Step 5: Implement the live probe without creating product search state**
-
-Use the exact API URL, get each signature from `SignatureRuntime`, send the pre-rendered body as bytes with `Content-Type: application/x-www-form-urlencoded`, apply Task 3 parsing/pagination, and SHA-256 each raw page. Build the temporary client with redirects disabled, system proxy disabled, a 10-second connect timeout, a 30-second total request timeout, and a streamed 5 MiB response limit. A monotonic rate limiter enforces at least 6500 ms between API request starts, including the repeated-page case; cancellation during the wait or body stream stops without retry. Task 5 must replace this fixed-host client with `fetch_checked` before any probe code can be promoted.
-
-Reject every non-2xx response before parsing. A probe does not automatically retry 429; it reports the parsed bounded `Retry-After`, remains cancellable, and the operator starts the next fixed observation only in a fresh quota window. Map explicit upstream errors and incompatible bodies to stable report codes; neither the frontend report nor ordinary logs may include a raw response body, raw upstream error text, signature, or full request body.
-
-Write raw pages only below `artifacts/feasibility/gd/raw/`; committed reports contain counts, stop reason and digests, never signatures or full song rows.
-
-Do not run the live probe in unit tests or CI. The UI exposes only three fixed buttons plus copy-report; it has no arbitrary keyword, endpoint, source, count or download action.
-
-- [ ] **Step 6: Commit the probe implementation, then verify Windows and macOS WebView isolation**
-
-Review and finalize the planned `gd-contract-pagination` and `signature-webview` entries in `evidence-scopes.json` so their exact arrays cover Tasks 3–4 contract/fixture/probe/WebView/config/ACL/frontend files and every shared Cargo/package/lock/build input that affects them. Then format, run deterministic/default-artifact checks, and commit all code before collecting platform evidence:
+Before formatting, confirm no managed builder/installer or cross-thread COM/WK owner remains. Append `verify:signature-host` to `quality` now that the repository source check is expected to pass. Then run:
 
 ```powershell
 pnpm format
 cargo fmt --manifest-path src-tauri/Cargo.toml --all
+node --test scripts/feasibility-evidence.test.mjs
+node --test scripts/verify-signature-host.test.mjs
+node --test scripts/run-signature-lifecycle-probe.test.mjs
+node scripts/verify-signature-host.mjs
 cargo test --manifest-path src-tauri/Cargo.toml --features feasibility signature_webview -- --nocapture
 cargo test --manifest-path src-tauri/Cargo.toml --features feasibility gd_live -- --nocapture
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features feasibility -- -D warnings
 pnpm quality
+$env:CARGO_TARGET_DIR=(Join-Path (Resolve-Path src-tauri) 'target/feasibility')
+pnpm tauri build --debug --no-bundle --config src-tauri/tauri.feasibility.conf.json --features feasibility
+$env:CARGO_TARGET_DIR=(Join-Path (Resolve-Path src-tauri) 'target/default')
 pnpm tauri build --debug --no-bundle
 pnpm verify:default-artifacts
-git add src-tauri/src/feasibility src-tauri/src/lib.rs src-tauri/build.rs src-tauri/permissions/feasibility.toml src-tauri/capabilities/feasibility-main.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json src-tauri/tauri.feasibility.conf.json src/lib/feasibility src/App.svelte src/App.test.ts src/vite-env.d.ts vite.config.ts package.json pnpm-lock.yaml scripts/verify-config.mjs scripts/verify-default-artifacts.mjs docs/feasibility/evidence-scopes.json
-git commit -m "feat: add isolated GD signature probe"
+Remove-Item Env:CARGO_TARGET_DIR
+git diff --check
+```
+
+`verify-default-artifacts.mjs` resolves the default binary/frontend artifact root from `CARGO_TARGET_DIR` when set and rejects accidentally inspecting the feasibility target. Expected: all deterministic checks pass; default artifacts contain no feasibility sentinel, while the frozen feature executable remains under `src-tauri/target/feasibility/debug/`. Do not collect platform evidence from a dirty tree.
+
+Stage only the implementation/source scope, preserving unrelated user files:
+
+```powershell
+git add .prettierignore src-tauri/src/feasibility src-tauri/src/lib.rs src-tauri/build.rs src-tauri/permissions/feasibility.toml src-tauri/capabilities/feasibility-main.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json src-tauri/tauri.feasibility.conf.json src/lib/feasibility src/App.svelte src/App.test.ts src/vite-env.d.ts vite.config.ts scripts/verify-config.mjs scripts/verify-default-artifacts.mjs scripts/run-signature-lifecycle-probe.mjs scripts/run-signature-lifecycle-probe.test.mjs docs/feasibility/evidence-scopes.json package.json pnpm-lock.yaml
+git commit -m "feat: add isolated raw WRY GD signature probe"
 git status --short
 ```
 
-Expected: status is clean. Every platform observation below must name this exact commit and use unchanged scoped files.
+Set `$implementationSha` to this exact clean commit. Every observation below names it, its full 40-character SHA and unchanged scope files.
 
-Run on a controlled Windows 10 22H2 x64 VM configured through `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` to use the lowest available WebView2 Fixed Version 111.0.1661.x build outside the repository, Windows 11 x64 with current Evergreen runtime, macOS 13.3 Intel, and current Apple Silicon. Record the exact runtime version and selected native filter mode, never the local fixed-runtime path; do not infer the minimum-runtime result from the current Evergreen row:
+- [ ] **Step 9: Run the four-platform signature isolation matrix**
 
-```powershell
-pnpm tauri dev --config src-tauri/tauri.feasibility.conf.json --features feasibility
-```
-
-For each platform, record all of the following in `docs/feasibility/signature-webview.md`:
+Run the feasibility app on:
 
 ```text
-hidden/no taskbar flash; ready <=20s; official final URL; sign <=5s; 1..128 bytes;
-cross-origin navigation blocked; window.open denied; download denied;
-native resource policy installed before first network navigation; exact runtime/filter mode recorded;
-direct and nested-frame cross-origin fetch/image canaries produce zero server hits; observed network origins are official-only;
-main canary executes; every Tauri/IPC bridge probe is absent; hidden canary count remains 0;
-20 destroy/retry cycles leave no extra window; 10-minute idle and sleep/wake either work or rebuild boundedly.
+windows-10-webview2-111-x64: Windows 10 22H2 x64 + lowest available fixed WebView2 111.0.1661.x
+windows-11-x64: frozen exact Windows 11 and current Evergreen runtime
+macos-13-intel: macOS 13.3 Intel
+macos-current-arm64: frozen exact current macOS/Apple Silicon runtime
 ```
 
-Any missing platform row makes this task `blocked`, not `pass`. Any detected IPC bridge, direct or nested cross-origin resource hit, resource-policy installation race, or inability to enforce the whitelist on the WebView2 111 baseline or another supported platform makes the task `design-change-required` until a replacement no-IPC WebView mechanism is implemented and the full matrix is rerun; ACL denial alone is never sufficient. Save the four platform rows and check fields to ignored `artifacts/feasibility/signature-webview.raw.json`.
+On each matching host, require a clean checkout of `$implementationSha`, rebuild the feature executable into its isolated target, then run the matching lifecycle command:
 
-- [ ] **Step 7: Run the three live pagination observations in separate quota windows**
+```powershell
+$env:CARGO_TARGET_DIR=(Join-Path (Resolve-Path src-tauri) 'target/feasibility')
+pnpm tauri build --debug --no-bundle --config src-tauri/tauri.feasibility.conf.json --features feasibility
+Remove-Item Env:CARGO_TARGET_DIR
+node scripts/run-signature-lifecycle-probe.mjs --app src-tauri/target/feasibility/debug/yinmi.exe --platform-id windows-10-webview2-111-x64 --output artifacts/feasibility/signature/windows-10-webview2-111-x64-lifecycle.json
+node scripts/run-signature-lifecycle-probe.mjs --app src-tauri/target/feasibility/debug/yinmi.exe --platform-id windows-11-x64 --output artifacts/feasibility/signature/windows-11-x64-lifecycle.json
+node scripts/run-signature-lifecycle-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --platform-id macos-13-intel --output artifacts/feasibility/signature/macos-13-intel-lifecycle.json
+node scripts/run-signature-lifecycle-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --platform-id macos-current-arm64 --output artifacts/feasibility/signature/macos-current-arm64-lifecycle.json
+```
 
-Run `single_count_1000`, wait for a fresh 5-minute window, run `paged_official_20`, wait again, then run `repeat_same_page`. Record page counts, unique counts, duplicates, invalid rows, stop reason and digests in `docs/feasibility/gd-contract-pagination.md`.
+Use `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` only for the fixed Windows runtime and keep the absolute runtime path outside reports. Read the Windows runtime version from the created WebView2 environment's `BrowserVersionString`; read macOS from `wry::webview_version()` and cross-check the WebKit framework `CFBundleVersion`. Record the frozen exact value, OS version, architecture, command, clean tested SHA, `runtimeModes` = `native-host-raw-wry-0.55.1` and the exact resource policy mode.
 
-ADR `0001-gd-pagination.md` must select the observed upstream count and a numeric safety page limit no greater than 50. ADR `0002-signature-webview.md` must select either healthy reuse or “health-check then destroy/rebuild”; both must keep zero capability and 20/5-second bounds. Save all three live-case fields plus deterministic HTTP-boundary checks to ignored `artifacts/feasibility/gd-contract-pagination.raw.json`.
+Each row must prove every schema-v2 check and exact per-vector result map, including: host has zero managed WebViews; policy acknowledgement precedes official navigation; official `Finished` precedes polling; inert shim has no app effect/response; cross-origin canary server sees zero hits; new instance/restart cannot recover storage; the fixed fault/timeout/late-callback/retry scenarios; active-host main close with native, manager, policy-store, tombstone and TLS acknowledgements; 20-cycle/idle/sleep-wake lifecycle stability; and no host/taskbar/window/activation leak. Run the cross-process lifecycle runner for that platform and merge only its validated sanitized phase traces/process-info into the raw observation.
 
-- [ ] **Step 8: Build and commit the validated evidence companions**
+The Windows 10 row is accepted with legacy mode only if every source/vector is caught on the fixed 111 runtime. Any application IPC capability, Tauri global, managed WebView, resource/persistence/lifecycle bypass or creation race is `design-change-required`. A missing platform is `blocked`. Save sanitized rows to ignored `artifacts/feasibility/signature-webview.raw.json`.
+
+- [ ] **Step 10: Run the three live pagination observations in separate quota windows**
+
+Run `single_count_1000`, wait for a fresh five-minute quota window, run `paged_official_20`, wait again, then run `repeat_same_page`. Record the typed default source triple, requested bounded count, API-request count, page/valid/unique/duplicate/invalid counts, stop reason, incomplete flag, duration and response digests only.
+
+ADR `0001-gd-pagination.md` selects the observed upstream count and numeric safety page limit no greater than 50. ADR `0002-signature-webview.md` records dedicated native host + raw WRY 0.55.1, capability-based inert-shim interpretation, selected platform policy modes, explicit nonpersistent storage, destroy-before-retry and the 20/5-second bounds. It may select healthy reuse or health-check-then-rebuild, but cannot weaken any isolation predicate.
+
+Save sanitized live results to ignored `artifacts/feasibility/gd-contract-pagination.raw.json`. Raw pages remain below ignored `artifacts/feasibility/gd/raw/`.
+
+- [ ] **Step 11: Build and commit validated evidence companions**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml --features feasibility signature_webview -- --nocapture
 cargo test --manifest-path src-tauri/Cargo.toml --features feasibility gd_live -- --nocapture
+node scripts/verify-signature-host.mjs
 node scripts/feasibility-evidence.mjs build --input artifacts/feasibility/signature-webview.raw.json --markdown docs/feasibility/signature-webview.md --output docs/feasibility/signature-webview.json
 node scripts/feasibility-evidence.mjs build --input artifacts/feasibility/gd-contract-pagination.raw.json --markdown docs/feasibility/gd-contract-pagination.md --output docs/feasibility/gd-contract-pagination.json
 node scripts/feasibility-evidence.mjs check docs/feasibility/signature-webview.json
 node scripts/feasibility-evidence.mjs check docs/feasibility/gd-contract-pagination.json
 ```
 
-Expected: tests pass; both companions name the clean implementation commit, contain all required fields, and match their current scopes. Then commit only evidence and decisions:
+Expected: both schema-v2 companions bind `$implementationSha`, exact current scopes, current Markdown/ADR hashes and every required machine field. Then commit only evidence and decisions:
 
 ```powershell
 git add docs/feasibility/gd-contract-pagination.md docs/feasibility/gd-contract-pagination.json docs/feasibility/signature-webview.md docs/feasibility/signature-webview.json docs/decisions/0001-gd-pagination.md docs/decisions/0002-signature-webview.md
-git commit -m "docs: record GD and WebView feasibility evidence"
+git commit -m "docs: record GD and raw WRY isolation evidence"
 ```
 
 ### Task 5: 验证逐跳 DNS 固定与 SSRF 防护
@@ -2717,35 +3026,182 @@ git commit -m "docs: record media-container feasibility evidence"
 
 **Files:**
 - Create: `src-tauri/src/feasibility/updater_probe.rs`
+- Create: `src-tauri/src/feasibility/updater_policy.rs`
 - Create: `src-tauri/tests/updater_probe.rs`
 - Create: `scripts/slow-update-server.mjs`
+- Create: `scripts/run-updater-exit-probe.mjs`
+- Create: `scripts/run-updater-exit-probe.test.mjs`
 - Modify: `src-tauri/build.rs`
 - Modify: `src-tauri/permissions/feasibility.toml`
 - Modify: `src-tauri/src/feasibility/mod.rs`
+- Modify: `src-tauri/src/feasibility/signature_host.rs`
+- Modify: `src-tauri/src/feasibility/signature_webview.rs`
+- Modify: `src-tauri/src/feasibility/signature_probe.rs`
 - Modify: `src-tauri/src/lib.rs`
 - Modify: `src/lib/feasibility/FeasibilityPanel.svelte`
 - Modify: `src-tauri/Cargo.toml`
 - Modify: `src-tauri/Cargo.lock`
 - Modify: `src-tauri/tauri.feasibility.conf.json`
 - Modify: `scripts/verify-config.mjs`
+- Modify: `package.json`
+- Modify: `docs/feasibility/evidence.schema.json`
+- Modify: `scripts/feasibility-evidence.mjs`
+- Modify: `scripts/feasibility-evidence.test.mjs`
 - Create: `docs/feasibility/updater-exit-barrier.md`
 - Create: `docs/feasibility/updater-exit-barrier.json`
 - Create: `docs/decisions/0006-updater-exit-barrier.md`
+- Modify: `docs/feasibility/gd-contract-pagination.md`
+- Modify: `docs/feasibility/gd-contract-pagination.json`
 - Modify: `docs/feasibility/signature-webview.md`
 - Modify: `docs/feasibility/signature-webview.json`
+- Modify: `docs/decisions/0001-gd-pagination.md`
 - Modify: `docs/decisions/0002-signature-webview.md`
 - Modify: `docs/feasibility/evidence-scopes.json`
 
 **Interfaces:**
-- Consumes: Tauri updater `Update::download`, not `download_and_install`; design §6.5/§9.
-- Produces: pure `ExitBarrier`, `UpdateStopMode`, an actual local slow-download probe, and one of two bounded ADR outcomes.
+- Consumes: Tauri updater `Update::download`, not `download_and_install`; design §6.5/§9; Task 4's acknowledged raw-host destroy path.
+- Produces: pure `ExitBarrier`, `UpdateStopMode`, an actual local slow-download probe, one bounded ADR outcome, and one shared termination integration that completes active signature-host/policy teardown before either process exit or verified update installation.
+
+The updater gate adds this exact machine-enforced object under `checks`; the map and every row use `additionalProperties: false`, all seven keys are required, and no aggregate or Markdown statement may substitute for a row:
+
+```json
+{
+  "activeSignatureHostCleanupByPlatform": {
+    "windows-x64": {
+      "activeHostObservedBeforeExitRequest": true,
+      "destroyAcknowledgedBeforeAppExitInvocation": true,
+      "resourcePolicyCleanupAcknowledgedBeforeAppExitInvocation": true,
+      "policyTombstonesEmptyBeforeAppExitInvocation": true,
+      "tlsEntryAbsentBeforeAppExitInvocation": true,
+      "hostWindowAbsentBeforeAppExitInvocation": true,
+      "processExitObservedAfterAppExitInvocation": true
+    },
+    "macos-intel": {
+      "activeHostObservedBeforeExitRequest": true,
+      "destroyAcknowledgedBeforeAppExitInvocation": true,
+      "resourcePolicyCleanupAcknowledgedBeforeAppExitInvocation": true,
+      "policyTombstonesEmptyBeforeAppExitInvocation": true,
+      "tlsEntryAbsentBeforeAppExitInvocation": true,
+      "hostWindowAbsentBeforeAppExitInvocation": true,
+      "processExitObservedAfterAppExitInvocation": true
+    },
+    "macos-arm64": {
+      "activeHostObservedBeforeExitRequest": true,
+      "destroyAcknowledgedBeforeAppExitInvocation": true,
+      "resourcePolicyCleanupAcknowledgedBeforeAppExitInvocation": true,
+      "policyTombstonesEmptyBeforeAppExitInvocation": true,
+      "tlsEntryAbsentBeforeAppExitInvocation": true,
+      "hostWindowAbsentBeforeAppExitInvocation": true,
+      "processExitObservedAfterAppExitInvocation": true
+    }
+  }
+}
+```
+
+The same `checks` object also contains `activeSignatureHostExitTracesByPlatform`. It has exactly the same three platform keys. Each platform value has `additionalProperties: false` and exactly `hostPlatform`, `hostArch`, `binaryTargetOs`, `binaryTargetArch`, `translatedProcess`, and `profiles`; `profiles` has exactly `cancelable` and `waitOnly`; and each profile value has `additionalProperties: false` plus exactly these committed sanitized fields:
+
+```json
+{
+  "activeHostReadyOrdinal": 1,
+  "exitRequestedOrdinal": 2,
+  "updateTerminalOrdinal": 3,
+  "signatureDestroyAcknowledgedOrdinal": 4,
+  "hostWindowAbsentOrdinal": 5,
+  "resourcePolicyCleanupAcknowledgedOrdinal": 6,
+  "policyTombstonesEmptyOrdinal": 7,
+  "tlsEntryAbsentOrdinal": 8,
+  "appExitInvokedOrdinal": 9,
+  "processExitObservedOrdinal": 10,
+  "childExitCode": 0,
+  "forcedKill": false
+}
+```
+
+These are the three release-architecture rows for the updater gate, distinct from Task 4's four runtime-authority rows. Exact correlations are `windows-x64 -> host win32/x64, child windows/x86_64, translatedProcess=null`; `macos-intel -> host darwin/x64, child macos/x86_64, translatedProcess=false`; and `macos-arm64 -> host darwin/arm64, child macos/aarch64, translatedProcess=false`. Each platform row aggregates two fresh app processes, one per real updater profile. The loopback recorder assigns strictly increasing positive integer ordinals to the first nine events; the external runner appends `processExitObservedOrdinal` as the last server ordinal plus one only after the child actually exits. The child is forbidden from submitting that event. The real exit invoker posts and awaits the `app-exit-invoked` recorder acknowledgement immediately before calling `app.exit(0)`. Passing requires, in both committed profile traces, active host before exit request, update terminal before cleanup, native destroy/manager absence before policy cleanup, store cleanup and zero tombstones before TLS absence, every cleanup proof before app-exit invocation, and externally observed zero-code/non-forced process exit afterward. The helper derives `activeSignatureHostCleanupByPlatform` exclusively from this trace map and rejects any disagreement.
+
+Schema/helper tests must reject a missing/extra platform/profile, missing/extra/wrongly typed trace or summary field, any summary `false`, a host/child/translation mismatch, duplicate/non-increasing/nonpositive ordinals, a missing host-ready prefix, policy cleanup/tombstone/TLS events out of order or at/after app-exit invocation, process exit at or before invocation, nonzero/forced exit, and caller-supplied summaries that disagree with either committed trace. Ignored raw input is only the source for building these sanitized traces; later `check` and Task 10 validate the committed ordinals directly.
+
+The updater gate also requires exact-key `checks.updaterClassificationByPlatform` and `checks.productionPolicy` objects. `updaterClassificationByPlatform` has exactly the same three release-architecture keys and the same exact host/child/translation correlations. Each row has `additionalProperties: false` and exactly `hostPlatform`, `hostArch`, `binaryTargetOs`, `binaryTargetArch`, `translatedProcess`, `dropFuture`, `waitOnly`, and `productionValidation`:
+
+```text
+dropFuture exact fields:
+  realUpdaterDownload=true
+  probeRequestTimeoutMs=30000
+  exitRequestedAfterFirstChunk=true
+  terminalKind="cancelled"
+  terminalElapsedMs integer in 0..5000
+  serverDisconnectElapsedMs integer in 0..5000
+  onFinishCalled=false
+  installCalled=false
+  appOwnedFileCount=0
+  exitActionBeforeTerminal=false
+  wouldInvokeAppExitAfterTerminal=true
+
+waitOnly exact fields:
+  realUpdaterDownload=true
+  probeRequestTimeoutMs=3000
+  settleGraceMs=2000
+  exitRequestedAfterFirstChunk=true
+  terminalKind exactly one of "timed-out" | "transport-error"
+  terminalElapsedMs integer in 0..5000
+  serverDisconnectElapsedMs integer in 0..5000
+  onFinishCalled=false
+  installCalled=false
+  appOwnedFileCount=0
+  exitActionBeforeTerminal=false
+  wouldInvokeAppExitAfterTerminal=true
+
+productionValidation exact fields:
+  realUpdaterDownload=true
+  selectedMode equals checks.productionPolicy.selectedMode
+  requestTimeoutMs equals checks.productionPolicy.requestTimeoutMs
+  settleGraceMs equals checks.productionPolicy.settleGraceMs
+  exitRequestedAfterFirstChunk=true
+  terminalKind is "cancelled" for drop-future, otherwise "timed-out" | "transport-error"
+  terminalElapsedMs integer in 0..checks.productionPolicy.maximumExitWaitMs
+  serverDisconnectElapsedMs integer in 0..checks.productionPolicy.maximumExitWaitMs
+  onFinishCalled=false
+  installCalled=false
+  appOwnedFileCount=0
+  waitingTextMatched=true
+  failureTextMatched=true
+  returnToAppTextMatched=true
+  exitActionBeforeTerminal=false
+  wouldInvokeAppExitAfterTerminal=true
+  validated=true
+```
+
+`checks.productionPolicy` has `additionalProperties: false` and exactly these fields:
+
+```text
+selectedMode exactly one of "drop-future" | "bounded-wait-only"
+requestTimeoutMs positive integer
+settleGraceMs nonnegative integer
+maximumExitWaitMs positive integer
+maxSignedPackageBytes positive integer
+minimumSupportedThroughputBytesPerSecond positive integer
+derivedMinimumTransferMs = ceil(maxSignedPackageBytes * 1000 / minimumSupportedThroughputBytesPerSecond)
+requestTimeoutCoversDerivedMinimum = (requestTimeoutMs >= derivedMinimumTransferMs) = true
+waitingText nonempty exact Simplified Chinese string
+failureText nonempty exact Simplified Chinese string
+returnToAppText nonempty exact Simplified Chinese string
+validatedByPlatform exact map {windows-x64:true, macos-intel:true, macos-arm64:true}
+```
+
+For `drop-future`, `maximumExitWaitMs` equals `settleGraceMs`; for `bounded-wait-only`, it equals `requestTimeoutMs + settleGraceMs`. All three `productionValidation` rows must be captured after these values and strings are frozen in code, and ADR `0006` must reproduce them exactly. Probe timeouts are classification inputs only and never silently become production values.
 
 - [ ] **Step 1: Write failing pure exit-barrier tests**
 
 Add:
 
 ```toml
-tauri-plugin-updater = "2.10.1"
+tauri-plugin-updater = { version = "2.10.1", optional = true }
+
+[features]
+feasibility = [
+  # retain every Task 4 entry
+  "dep:tauri-plugin-updater",
+]
 ```
 
 Define and test this surface before implementation:
@@ -2809,7 +3265,7 @@ impl ExitBarrier {
 
 Tests cover idle close, active music, cancelable update, wait-only update, both active, install while active, update failure, return-to-app, repeated close idempotency, and deadline+grace exceeded. Assert no `ExitProcess` or `InstallVerifiedUpdate` action appears before all active operations report terminal.
 
-The fake wait-only adapter is only a deterministic unit-test seam for `ExitBarrier`; its result can never satisfy the updater feasibility gate. Gate evidence must come from the real `tauri_plugin_updater::Update::download` path in Steps 4–6.
+The fake wait-only adapter is only a deterministic unit-test seam for `ExitBarrier`; its result can never satisfy the updater feasibility gate. Gate evidence must come from the real `tauri_plugin_updater::Update::download` path in Steps 4–7.
 
 Run:
 
@@ -2826,7 +3282,14 @@ Implement the transition table from the design and these invariants:
 ```text
 programmatic app.exit() may only be called by BarrierAction::ExitProcess
 Update::install(bytes) may only be called by BarrierAction::InstallVerifiedUpdate
+ExitProcess and InstallVerifiedUpdate both call the same prepare_for_process_termination() future first
 CloseRequested always prevent_close() while any operation is active
+CloseRequested only records intent and spawns/queues the async exit coordinator; it never waits inline
+the exit coordinator and BarrierAction executor run on Tokio/background work, never inline on the event-loop/UI thread
+prepare_for_process_termination first awaits Task 4 composite teardown, then verifies native/manager absence, resource-policy cleanup, zero tombstones and TLS Empty
+only after that shared barrier may ExitProcess invoke app.exit() or InstallVerifiedUpdate invoke Update::install(bytes)
+signature cleanup timeout/failure keeps the app open with stable feedback and invokes neither app.exit() nor install()
+RunEvent::ExitRequested prevents/queues background cleanup while a host ticket is active; final RunEvent::Exit only performs idempotent nonwaiting UI detach and should observe Empty
 download_and_install is forbidden
 duplicate close/cancel events are idempotent
 wait-only deadline+grace -> StayOpen, never forced exit
@@ -2836,7 +3299,23 @@ Run the pure tests. Expected: PASS.
 
 - [ ] **Step 3: Create a deterministic slow signed update fixture**
 
-`scripts/slow-update-server.mjs` must bind only `127.0.0.1`, serve `/latest.json` plus one fixed `/update.bin` route, stream the artifact in 64 KiB chunks, log request start/chunk/connection-close times, and expose no filesystem path supplied by an HTTP request. Its `--prepare <path>` mode creates exactly 8 MiB from a repeated fixed 64 KiB byte pattern and exits; normal mode accepts only explicit `--artifact`, `--signature` and `--profile cancelable|wait-only|classification`, and rejects any port other than `38475`. `cancelable` sends a chunk every 250 ms. `wait-only` sends a chunk every 750 ms, so a real updater configured with a three-second request timeout cannot finish the signed artifact. `classification` applies `cancelable` to the first artifact request and `wait-only` to the second, then rejects further artifact requests. The dynamic manifest contains exactly version `0.1.1`, URL `http://127.0.0.1:38475/update.bin`, and the complete `.sig` contents.
+`scripts/slow-update-server.mjs` must bind only `127.0.0.1`, serve `/latest.json` plus one fixed `/update.bin` route, stream the artifact in 64 KiB chunks, log request start/chunk/connection-close times, and expose no filesystem path supplied by an HTTP request. Its `--prepare <path>` mode creates exactly 8 MiB from a repeated fixed 64 KiB byte pattern and exits; normal mode accepts only explicit `--artifact`, `--signature` and `--profile cancelable|wait-only|classification|production-validation`, and rejects any port other than `38475`. `cancelable` sends a chunk every 250 ms. `wait-only` sends a chunk every 750 ms, so a real updater configured with a three-second probe request timeout cannot finish the signed artifact. `classification` applies `cancelable` to the first artifact request and `wait-only` to the second, then rejects further artifact requests. `production-validation` accepts exactly one artifact request and requires `--selected-mode drop-future|bounded-wait-only`; it uses the corresponding cancelable/stalling stream and is accepted only after that same mode exists in `updater_policy.rs`. The dynamic manifest contains exactly version `0.1.1`, URL `http://127.0.0.1:38475/update.bin`, and the complete `.sig` contents.
+
+The same loopback server enables fixed `POST /probe-process` and `POST /probe-events` for all runner profiles, `POST /probe-report` only for non-exiting classification/production validation, and `POST /probe-policy` only for production validation. The runner generates a fresh 128-bit cryptographically random lowercase-hex run ID, passes it directly to the in-memory recorder as the only accepted ID, and injects it into the child as `YINMI_FEASIBILITY_UPDATER_RUN_ID`. Process bodies are at most 4 KiB and contain exactly `{runId,profile,binaryTargetOs,binaryTargetArch,translatedProcess}`; event bodies are at most 4 KiB and contain exactly `{runId,profile,event}`; report bodies are at most 32 KiB and contain exactly `{runId,profile,report}`; the policy declaration is at most 4 KiB and contains exactly `{runId,profile:"production-validation",selectedMode,maximumExitWaitMs}`. All endpoints exact-match run ID/profile and reject client ordinals/timestamps, stale/wrong/replayed IDs, unknown/duplicate/out-of-order messages, extra keys, second process/declaration/report messages and every request after the one-shot run completes.
+
+Before any updater request or lifecycle event, the child reports Rust `std::env::consts::{OS,ARCH}` and, on macOS, the native `sysctl.proc_translated` result; Windows uses `null`. The runner requires exact agreement among child data, Node `process.platform/process.arch`, CLI platform ID and expected translation state. Rosetta or any mismatched child binary fails before the artifact route opens. These verified values, not caller labels, populate both updater platform maps.
+
+After process-info acknowledgement, the exact classification event grammar is `drop-future-exit-requested`, `drop-future-terminal`, `wait-only-exit-requested`, `wait-only-terminal`, followed by exactly one report POST. Production validation first posts the policy declaration before any updater request, then uses `production-exit-requested`, `production-terminal`, followed by exactly one report POST; the final `ProductionPolicyReport.selectedMode` and `maximumExitWaitMs` must equal the declared values and selected CLI mode. After the first chunk, the app posts the matching `*-exit-requested` event and waits for its acknowledgement before starting its local `Instant` and applying `BarrierEvent::ExitRequested`; therefore the recorder's earlier start is a conservative bound rather than an understated cross-process timestamp. The recorder stops that clock only when the matching artifact socket emits connection close and supplies `serverDisconnectElapsedMs`, never the Rust DTO or a terminal log. A `*-terminal` event response is withheld until that matching socket-close observation arrives or the profile bound fails, and classification cannot open its second artifact request before the first terminal acknowledgement. The app measures `terminalElapsedMs` from the local barrier call to its real updater terminal. The runner waits for the exact app report, all expected connection-close observations and a zero-code child exit, validates both clock origins, and merges them with its verified host/child architecture into one sanitized machine report. No human-entered disconnect time can pass.
+
+Real-exit profiles use the nine-event grammar `active-host-ready`, `exit-requested`, `update-terminal`, `signature-destroy-acknowledged`, `host-window-absent`, `resource-policy-cleanup-acknowledged`, `policy-tombstones-empty`, `tls-entry-absent`, `app-exit-invoked`. The recorder assigns strictly increasing ordinals server-side. Only these nine events are accepted from the child; `process-exit-observed` is forbidden on HTTP and appended by the parent runner as the last server ordinal plus one after actual child exit. The download routes reject more than the request count fixed by the selected profile. Output is supplied only by the local CLI under the ignored artifact directory, never by an HTTP parameter. `scripts/run-updater-exit-probe.test.mjs` proves nonce generation/propagation, missing/wrong/replayed-ID rejection, process-info/translation checks, every profile grammar, report/schema/connection-close merge, both elapsed origins, policy cleanup/tombstone ordering, child-exit handling, platform correlation and sanitization before implementation.
+
+Runner deadlines are exact: 60 seconds for `classification`, `cancelable` and `wait-only`. Production validation allows 30 seconds from spawn for the nonce-bound policy declaration; after accepting it, the runner replaces that startup timer with checked addition of declared `maximumExitWaitMs + 30000` milliseconds and later requires exact equality with the final policy report/evidence. Overflow, a nonpositive value, missing/mismatched declaration or a second declaration fails closed. A timeout first writes sanitized diagnostic state, then kills only for local cleanup and exits nonzero; forced output is never gate evidence.
+
+```powershell
+node --test scripts/run-updater-exit-probe.test.mjs
+```
+
+Expected: FAIL because the external runner and recorder support are absent.
 
 Generate and use a disposable key with these exact commands:
 
@@ -2851,7 +3330,11 @@ $env:YINMI_FEASIBILITY_UPDATER_PUBKEY_PATH=(Resolve-Path artifacts/feasibility/u
 $env:YINMI_FEASIBILITY_UPDATER_ENDPOINT='http://127.0.0.1:38475/latest.json'
 ```
 
-The generated `.sig`, public key, private key, and artifact remain below the ignored artifact directory and are never committed. `yinmi-feasibility-only` is an intentionally public test-only password, not a production secret, and must never be reused. With the Cargo feature enabled, `src-tauri/src/lib.rs` reads the two `YINMI_FEASIBILITY_*` variables and supplies the public-key contents and the single endpoint to the updater builder. If both variables are absent, the other feasibility probes still start and the updater button is disabled; if only one is present, the endpoint is not loopback, or the key is unreadable, startup fails closed. The default build does not register the updater plugin.
+The generated `.sig`, public key, private key, and artifact remain below the ignored artifact directory and are never committed. `yinmi-feasibility-only` is an intentionally public test-only password, not a production secret, and must never be reused. With the Cargo feature enabled, `src-tauri/src/lib.rs` reads `YINMI_FEASIBILITY_UPDATER_PUBKEY_PATH` and `YINMI_FEASIBILITY_UPDATER_ENDPOINT` and supplies the public-key contents and the single endpoint to the updater builder. If both are absent, the other feasibility probes still start and the updater button is disabled; if only one is present, the endpoint is not fixed loopback, or the key is unreadable, startup fails closed.
+
+Only `scripts/run-updater-exit-probe.mjs` may additionally set `YINMI_FEASIBILITY_UPDATER_AUTORUN=classify|validate-production|exit-cancelable|exit-wait-only`, `YINMI_FEASIBILITY_UPDATER_RUN_ID=<32 lowercase hex>`, and the fixed `YINMI_FEASIBILITY_UPDATER_TRACE_ENDPOINT=http://127.0.0.1:38475/probe-events`; process/report/policy endpoints are derived from that fixed origin, not supplied separately. Autorun without the base pair, exact endpoint, valid runner nonce, or exact host/child/platform correlation fails closed; these variables in an ordinary interactive process also fail closed. The runner accepts only `windows-x64`, `macos-intel`, or `macos-arm64`, verifies the Node host plus child process-info matrix above, and rejects a caller label mismatch or translated macOS child.
+
+`classify` and `validate-production` use `RecordingExitInvoker`, post the exact report, await the recorder's response and request ordinary main-window close; they never call the real exit invoker or contribute to the active-host cleanup map. `exit-cancelable` and `exit-wait-only` first initialize a real active signature host, execute through `RealExitInvoker`, post/await the final invocation-boundary event and call `app.exit(0)`; they never post a report or submit the external process-exit event. The default build does not register the updater plugin or contain any autorun path.
 
 Add only this probe exception to `tauri.feasibility.conf.json`:
 
@@ -2880,87 +3363,243 @@ pub async fn download_update<R: tauri::Runtime>(
 ) -> UpdateDownloadTerminal;
 ```
 
-Expose only the fixed feature command `feasibility_run_updater_classification_probe` and one matching button in `FeasibilityPanel.svelte`. The command returns both real scenarios in one report:
+Expose only the fixed feature command `feasibility_run_updater_classification_probe` and initially one matching classification button in `FeasibilityPanel.svelte`. Both scenarios use the real updater download. At the final exit-invocation boundary only, this in-process classification command injects `RecordingExitInvoker`, which records `wouldInvokeAppExit` and returns instead of terminating the process; it cannot satisfy the real-exit cleanup map. Freeze this DTO surface so implementation and evidence code do not invent fields:
 
 ```rust
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdaterTerminalKind { Cancelled, TimedOut, TransportError }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdateStopModeName { DropFuture, BoundedWaitOnly }
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealDownloadProbeReport {
+    pub real_updater_download: bool,
+    pub request_timeout_ms: u64,
+    pub settle_grace_ms: u64,
+    pub exit_requested_after_first_chunk: bool,
+    pub terminal_kind: UpdaterTerminalKind,
+    pub terminal_elapsed_ms: u64,
+    pub on_finish_called: bool,
+    pub install_called: bool,
+    pub app_owned_file_count: u32,
+    pub exit_action_before_terminal: bool,
+    pub would_invoke_app_exit_after_terminal: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdaterClassificationReport {
     pub drop_future: RealDownloadProbeReport,
     pub wait_only: RealDownloadProbeReport,
-    pub feedback_text: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdaterFeedbackReport {
+    pub waiting: String,
+    pub failure: String,
+    pub return_to_app: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductionPolicyReport {
+    pub selected_mode: UpdateStopModeName,
+    pub request_timeout_ms: u64,
+    pub settle_grace_ms: u64,
+    pub maximum_exit_wait_ms: u64,
+    pub max_signed_package_bytes: u64,
+    pub minimum_supported_throughput_bytes_per_second: u64,
+    pub derived_minimum_transfer_ms: u64,
+    pub feedback: UpdaterFeedbackReport,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductionPolicyValidationReport {
+    pub policy: ProductionPolicyReport,
+    pub observation: RealDownloadProbeReport,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdaterProbeAction { Classify, ValidateProductionPolicy }
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "report", rename_all = "kebab-case")]
+pub enum UpdaterProbeReport {
+    Classification(UpdaterClassificationReport),
+    ProductionValidation(ProductionPolicyValidationReport),
 }
 ```
 
-Cancelable scenario: start the actual updater download against server profile `cancelable`, cancel after the first chunk and drop the download future. Passing requires wrapper `Cancelled`, server disconnect within 5 seconds, `on_finish` false, install never called, and no app-owned file remains.
+The preliminary harness commit implements only `UpdaterProbeAction::Classify`; `ValidateProductionPolicy` is enabled only in the second policy-freeze commit after `updater_policy.rs` contains non-placeholder constants and exact strings. Both variants remain behind the same command/permission, so no second updater IPC surface is added.
 
-Wait-only scenario: create a fresh real updater with `UpdaterBuilder::timeout(Duration::from_secs(3))`, check again against server profile `wait-only`, request exit after the first chunk, and keep polling the real `Update::download` future until it returns. Passing requires a real updater timeout/error terminal within 3 seconds plus 2 seconds settle grace, server connection close, `on_finish` false, install never called, no app-owned file, and no `ExitProcess` action before that terminal. The UI must visibly show bounded wording equivalent to `更新无法立即取消；最多等待 5 秒，可返回应用` while waiting and `更新下载已停止，未安装` on terminal. A fake adapter may test state transitions but cannot produce either report.
+`RealDownloadProbeReport` intentionally has no server-disconnect field: the app cannot observe the server's socket-close clock. Only the nonce-bound runner may add `serverDisconnectElapsedMs` while merging the recorder observation. A standalone UI/IPC report, copied terminal log or caller-supplied elapsed value is never valid gate input.
+
+The evidence helper requires the three final-SHA `ProductionPolicyReport` values to be byte-for-byte equal, flattens their nested feedback strings into `checks.productionPolicy`, recomputes `derivedMinimumTransferMs`, and derives `validatedByPlatform` from the three validated runner rows. Raw input cannot supply that aggregate map.
+
+Cancelable scenario: start the actual updater download against server profile `cancelable`, request exit after the first chunk, cancel and drop the download future. Passing requires wrapper `Cancelled`, server disconnect within 5 seconds, `on_finish` false, install never called, no app-owned file, no `ExitProcess` action before cancellation terminal, and a recorded would-exit invocation only afterward.
+
+Wait-only scenario: create a fresh real updater with `UpdaterBuilder::timeout(Duration::from_secs(3))`, check again against server profile `wait-only`, request exit after the first chunk, and keep polling the real `Update::download` future until it returns. Passing requires a real updater timeout/error terminal within 3 seconds plus 2 seconds settle grace, server connection close, `on_finish` false, install never called, no app-owned file, no `ExitProcess` action before that terminal, and a recorded would-exit invocation only after terminal/cleanup. During this preliminary classification the UI labels the values as probe-only; production waiting/failure/return strings are not selected yet. A fake download adapter may test state transitions but cannot produce either real-download report; the injected exit recorder is accepted only for these non-exiting classification/production-validation reports.
 
 Expected before implementation: both scenarios fail.
 
-- [ ] **Step 5: Implement and classify updater behavior**
+- [ ] **Step 5: Implement the preliminary classifier and collect three-platform observations**
 
-Add `feasibility_run_updater_classification_probe` to the feature-only `AppManifest`, permission, and handler. The existing default-artifact prefix check covers it automatically. Build the updater for both scenarios through `UpdaterExt::updater_builder().timeout(...).no_proxy()` with the fixed loopback endpoint and test public key. Implement both modes without claiming the result in advance.
+Implement the slow server's recorder route and `run-updater-exit-probe.mjs` until its Node tests pass. Add `feasibility_run_updater_classification_probe` to the feature-only `AppManifest`, permission, and handler. The existing default-artifact prefix check covers it automatically. Build the drop-future updater through `UpdaterExt::updater_builder().timeout(Duration::from_secs(30)).no_proxy()` and the wait-only updater through `UpdaterExt::updater_builder().timeout(Duration::from_secs(3)).no_proxy()`, both with the fixed loopback endpoint and test public key. Put `RecordingExitInvoker` and `RealExitInvoker` behind the same private executor seam; tests must prove only the feature autorun path can construct the real invoker. Implement both probe modes without claiming the production result in advance.
 
-Run the pure/fake tests first:
+Add package script `"test:updater-exit-runner": "node --test scripts/run-updater-exit-probe.test.mjs"` and append it to `quality`; this script-only package change does not alter `pnpm-lock.yaml`. Runner tests cover all four profiles, app-report/server-close merging, exit-request clock origins, nonce replay and wrong host/child/translation cases for all three exact correlations. Add active-signature-host integration tests for both terminal actions: `ExitProcess` and `InstallVerifiedUpdate` must pass the same native/manager/policy/tombstone/TLS composite barrier before entering their respective `app.exit()` or `Update::install` invocation boundary; repeated actions remain idempotent, and every cleanup timeout keeps both boundaries untouched.
 
-```powershell
-cargo test --manifest-path src-tauri/Cargo.toml --features feasibility --test updater_probe -- --nocapture --test-threads=1
-```
-
-Create the exact `updater-exit-barrier` scope entry and extend the signature entry for every changed command/ACL/config/frontend/Cargo file. Then format, verify the default build remains clean, and commit every updater/ACL change before real platform observations:
+Run the pure/fake, runner and isolation tests, then build feature and default artifacts into separate absolute target directories so the default build cannot overwrite the executable reserved for later real-exit runs:
 
 ```powershell
 pnpm format
 cargo fmt --manifest-path src-tauri/Cargo.toml --all
+pnpm test:updater-exit-runner
+cargo test --manifest-path src-tauri/Cargo.toml --features feasibility --test updater_probe -- --nocapture --test-threads=1
+cargo test --manifest-path src-tauri/Cargo.toml --features feasibility signature_webview -- --nocapture
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features feasibility -- -D warnings
+node scripts/verify-signature-host.mjs
+pnpm quality
+$env:CARGO_TARGET_DIR=(Join-Path (Resolve-Path src-tauri) 'target/feasibility')
+pnpm tauri build --debug --no-bundle --config src-tauri/tauri.feasibility.conf.json --features feasibility
+$env:CARGO_TARGET_DIR=(Join-Path (Resolve-Path src-tauri) 'target/default')
 pnpm tauri build --debug --no-bundle
 pnpm verify:default-artifacts
-git add src-tauri/src/feasibility/updater_probe.rs src-tauri/src/feasibility/mod.rs src-tauri/src/lib.rs src-tauri/build.rs src-tauri/permissions/feasibility.toml src-tauri/tests/updater_probe.rs src/lib/feasibility/FeasibilityPanel.svelte src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.feasibility.conf.json scripts/verify-config.mjs scripts/slow-update-server.mjs docs/feasibility/evidence-scopes.json
-git commit -m "feat: add bounded updater exit classification"
+Remove-Item Env:CARGO_TARGET_DIR
+git add src-tauri/src/feasibility/updater_probe.rs src-tauri/src/feasibility/mod.rs src-tauri/src/feasibility/signature_host.rs src-tauri/src/feasibility/signature_webview.rs src-tauri/src/feasibility/signature_probe.rs src-tauri/src/lib.rs src-tauri/build.rs src-tauri/permissions/feasibility.toml src-tauri/tests/updater_probe.rs src/lib/feasibility/FeasibilityPanel.svelte src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.feasibility.conf.json scripts/verify-config.mjs scripts/slow-update-server.mjs scripts/run-updater-exit-probe.mjs scripts/run-updater-exit-probe.test.mjs package.json
+git commit -m "feat: add updater exit classification probe"
 git status --short
 ```
 
-Expected: status is clean. The real classification report and refreshed WebView isolation report must name this commit.
-
-Then start the two-request classification profile in terminal A:
+Expected: status is clean. On Windows x64, macOS Intel and macOS ARM64, check out this exact preliminary commit with a clean tree and build the isolated feature executable into `src-tauri/target/feasibility`. Then run the one matching command; the runner owns the server, nonce, autorun child, app report, server disconnect observations and child cleanup:
 
 ```powershell
-node scripts/slow-update-server.mjs --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --profile classification --port 38475
+# Windows x64
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi.exe --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id windows-x64 --profile classification --output artifacts/feasibility/updater/preliminary/windows-x64-classification.json
+
+# macOS Intel
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-intel --profile classification --output artifacts/feasibility/updater/preliminary/macos-intel-classification.json
+
+# macOS ARM64
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-arm64 --profile classification --output artifacts/feasibility/updater/preliminary/macos-arm64-classification.json
 ```
 
-Start the feature app in terminal B:
+Each run performs real drop-future then real wait-only through `RecordingExitInvoker`, merges the exact app report with recorder-owned disconnect times, and exits the child normally. Transfer all three sanitized reports to the primary host. They select the policy but are not final gate inputs because the policy commit does not exist yet.
 
-```powershell
-$env:YINMI_FEASIBILITY_UPDATER_PUBKEY_PATH=(Resolve-Path artifacts/feasibility/updater/test.key.pub)
-$env:YINMI_FEASIBILITY_UPDATER_ENDPOINT='http://127.0.0.1:38475/latest.json'
-pnpm tauri dev --config src-tauri/tauri.feasibility.conf.json --features feasibility
-```
+- [ ] **Step 6: Freeze, commit and validate one production policy**
 
-Press the single classification button once. It runs the drop-future request first and the real wait-only request second, then returns one combined report. Confirm terminal A logged exactly two artifact requests and a terminal connection state for both. Stop both processes after the report is saved.
-
-Decision matrix:
+Apply the three-platform preliminary results mechanically:
 
 ```text
-drop future disconnects <=5s and cleans -> ADR selects cancelable mode
-drop future cannot be proven + real wait-only reaches true terminal within configured timeout + 2s -> ADR may select wait-only mode
-fake-only wait-only result or missing real server terminal -> blocked, never pass
-neither mode is bounded -> design-change-required; stop Phase 1
+all three drop-future rows cancel and disconnect <=5s -> select drop-future
+otherwise, all three real wait-only rows reach a true terminal within probe request timeout + 2s -> select bounded-wait-only
+fake-only wait result, missing platform/server terminal, or mixed unbounded behavior -> blocked, never pass
+neither candidate is bounded on every platform -> design-change-required; stop Phase 1
 ```
 
-For the wait-only candidate, ADR `0006` must select a numeric production total timeout, show the maximum expected signed package size and minimum supported throughput used to derive it, cap the additional settle grace, and freeze the exact waiting/failure/return-to-app user feedback. Validate the timeout path with the real updater on every target platform. If a defensible finite value cannot be derived, the result is `design-change-required`; infinite waiting is forbidden.
+Only after one candidate passes, create `updater_policy.rs` with non-placeholder constants for `SELECTED_MODE`, `REQUEST_TIMEOUT_MS`, `SETTLE_GRACE_MS`, `MAXIMUM_EXIT_WAIT_MS`, `MAX_SIGNED_PACKAGE_BYTES`, `MINIMUM_SUPPORTED_THROUGHPUT_BYTES_PER_SECOND`, and the exact `WAITING_TEXT`, `FAILURE_TEXT`, and `RETURN_TO_APP_TEXT`. Derive transfer time with checked integer arithmetic, enforce the relations in `checks.productionPolicy`, and add compile-time/unit assertions where possible. A finite production request timeout must cover the stated maximum signed package at the minimum supported throughput; if it cannot, stop with `design-change-required`. Infinite waiting is forbidden.
 
-- [ ] **Step 6: Record platform evidence and commit**
+Enable `UpdaterProbeAction::ValidateProductionPolicy` through the existing command and add a second feature-only button. It must build the updater through the same private builder factory used by the product path, use the frozen request timeout/mode, inject only `RecordingExitInvoker`, exercise the `production-validation` server profile, and return `ProductionPolicyValidationReport`. Tests compare the three displayed strings byte-for-byte with policy constants and prove waiting, failure, return-to-app, no early exit/install, terminal/disconnect bounds and selected-mode consistency.
 
-Run both real profiles on Windows x64 and both macOS architectures. `docs/feasibility/updater-exit-barrier.md` records profile, configured real updater timeout, chunk count, cancellation/exit-request time, disconnect observation, cleanup, terminal time, visible feedback states, whether install was invoked, and every barrier decision. Save the required machine fields to ignored `artifacts/feasibility/updater-exit-barrier.raw.json`. No signing secret or raw private key enters the document.
+Now extend schema/helper tests first, then implementation, for the exact classification, production-policy, host/child correlation, composite cleanup and trace contracts above. Create the exact `updater-exit-barrier` scope entry and extend both `signature-webview` and `gd-contract-pagination` for every changed raw-host/lifecycle/command/ACL/config/frontend/Cargo file. The updater scope includes `updater_policy.rs`, `signature_host.rs`, `signature_webview.rs`, `signature_probe.rs`, all three resource-policy files, deterministic tests/source gate, both updater runner files, `package.json`, and both active-host termination-action integration tests.
 
-This task changed the command manifest, permissions and feature app. Rerun the full four-platform signature/WebView isolation matrix from Task 4, refresh `artifacts/feasibility/signature-webview.raw.json` and rebuild its Markdown/JSON companion. Reusing the old signature companion must fail its scope digest.
+```powershell
+pnpm format
+cargo fmt --manifest-path src-tauri/Cargo.toml --all
+node --test scripts/feasibility-evidence.test.mjs
+pnpm test:updater-exit-runner
+cargo test --manifest-path src-tauri/Cargo.toml --features feasibility --test updater_probe -- --nocapture --test-threads=1
+cargo test --manifest-path src-tauri/Cargo.toml --features feasibility signature_webview -- --nocapture
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features feasibility -- -D warnings
+node scripts/verify-signature-host.mjs
+pnpm quality
+git add src-tauri/src/feasibility/updater_policy.rs src-tauri/src/feasibility/updater_probe.rs src-tauri/src/feasibility/mod.rs src-tauri/src/feasibility/signature_host.rs src-tauri/src/feasibility/signature_webview.rs src-tauri/src/feasibility/signature_probe.rs src-tauri/src/lib.rs src-tauri/tests/updater_probe.rs src/lib/feasibility/FeasibilityPanel.svelte src-tauri/Cargo.toml src-tauri/Cargo.lock docs/feasibility/evidence.schema.json docs/feasibility/evidence-scopes.json scripts/feasibility-evidence.mjs scripts/feasibility-evidence.test.mjs
+git commit -m "feat: freeze bounded updater exit policy"
+git status --short
+```
 
-After the feature probe, run a default `pnpm tauri build --debug --no-bundle` followed by `pnpm verify:default-artifacts`; both must pass so the updater probe, environment-variable names, and commands do not enter the normal artifact.
+Expected: status is clean. This second commit is the only Task 8 `testedCommit`. On each target host check out that exact commit and build the final feature executable and default artifact into separate targets:
+
+```powershell
+$env:CARGO_TARGET_DIR=(Join-Path (Resolve-Path src-tauri) 'target/feasibility')
+pnpm tauri build --debug --no-bundle --config src-tauri/tauri.feasibility.conf.json --features feasibility
+$env:CARGO_TARGET_DIR=(Join-Path (Resolve-Path src-tauri) 'target/default')
+pnpm tauri build --debug --no-bundle
+pnpm verify:default-artifacts
+Remove-Item Env:CARGO_TARGET_DIR
+```
+
+Rerun final-SHA classification with the matching platform command below; preliminary-commit reports cannot be copied forward:
+
+```powershell
+# Windows x64
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi.exe --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id windows-x64 --profile classification --output artifacts/feasibility/updater/windows-x64-classification.json
+
+# macOS Intel
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-intel --profile classification --output artifacts/feasibility/updater/macos-intel-classification.json
+
+# macOS ARM64
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-arm64 --profile classification --output artifacts/feasibility/updater/macos-arm64-classification.json
+```
+
+Then run exactly one production-validation command on that host according to the committed `SELECTED_MODE`:
+
+```powershell
+# Windows x64; choose exactly one selected-mode value
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi.exe --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id windows-x64 --profile production-validation --selected-mode drop-future --output artifacts/feasibility/updater/windows-x64-production-validation.json
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi.exe --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id windows-x64 --profile production-validation --selected-mode bounded-wait-only --output artifacts/feasibility/updater/windows-x64-production-validation.json
+
+# macOS Intel; choose exactly one selected-mode value
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-intel --profile production-validation --selected-mode drop-future --output artifacts/feasibility/updater/macos-intel-production-validation.json
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-intel --profile production-validation --selected-mode bounded-wait-only --output artifacts/feasibility/updater/macos-intel-production-validation.json
+
+# macOS ARM64; choose exactly one selected-mode value
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-arm64 --profile production-validation --selected-mode drop-future --output artifacts/feasibility/updater/macos-arm64-production-validation.json
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-arm64 --profile production-validation --selected-mode bounded-wait-only --output artifacts/feasibility/updater/macos-arm64-production-validation.json
+```
+
+The runner rejects the unselected mode by comparing the CLI value with the child report and committed policy. Run both real-exit profiles in fresh child processes; the runner starts its own fixed-port server/recorder, sets the strict nonce/autorun environment, observes child exit, and never kills a passing child:
+
+```powershell
+# Windows x64
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi.exe --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id windows-x64 --profile cancelable --output artifacts/feasibility/updater/windows-x64-cancelable.json
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi.exe --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id windows-x64 --profile wait-only --output artifacts/feasibility/updater/windows-x64-wait-only.json
+
+# macOS Intel
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-intel --profile cancelable --output artifacts/feasibility/updater/macos-intel-cancelable.json
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-intel --profile wait-only --output artifacts/feasibility/updater/macos-intel-wait-only.json
+
+# macOS ARM64
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-arm64 --profile cancelable --output artifacts/feasibility/updater/macos-arm64-cancelable.json
+node scripts/run-updater-exit-probe.mjs --app src-tauri/target/feasibility/debug/yinmi --artifact artifacts/feasibility/updater/update-0.1.1.bin --signature artifacts/feasibility/updater/update-0.1.1.bin.sig --pubkey artifacts/feasibility/updater/test.key.pub --platform-id macos-arm64 --profile wait-only --output artifacts/feasibility/updater/macos-arm64-wait-only.json
+```
+
+The tested CLI accepts only the three correlated platform IDs and four profiles `classification|production-validation|cancelable|wait-only`, plus an existing feature binary/artifact/signature/public key and output path under the ignored updater directory. `--selected-mode` is required only for production validation and forbidden otherwise. It uses a fresh run ID per child. On timeout it saves sanitized diagnostic state, kills the child only for local cleanup, records `forcedKill=true` and exits nonzero; such output can never pass. Transfer only final-SHA runner outputs; the evidence helper consumes merged classification/production records and the exact two real-exit traces per platform, never standalone app DTOs or server logs.
+
+- [ ] **Step 7: Record platform evidence and commit**
+
+Use only the final policy commit's non-exiting real-download classification, production-policy validation and both external real-exit profiles from Windows x64 and both macOS architectures. `docs/feasibility/updater-exit-barrier.md` records both probe timeouts, selected production mode/constants/derivation, chunk count, cancellation/exit-request time, disconnect/terminal time, exact visible feedback strings, whether install was invoked, and every barrier decision. ADR `0006` reproduces the policy constants and all three strings byte-for-byte and states why the rejected mode was not selected. For both external traces in each platform row, a real signature host must be ready before the exit request; server-assigned ordinals must put native destroy, manager absence, resource-policy cleanup, zero tombstones and TLS absence before the `app.exit()` invocation boundary, and the runner must observe a clean child exit afterward. Deterministic integration tests separately prove the identical composite barrier before `Update::install`. The helper commits exact `updaterClassificationByPlatform`, `productionPolicy`, and `activeSignatureHostExitTracesByPlatform`, derives the seven-field `activeSignatureHostCleanupByPlatform` summary, and rejects any policy/ADR/report/host/child mismatch. Save source observations to ignored `artifacts/feasibility/updater-exit-barrier.raw.json`; no signing secret, private key, run ID, absolute path or marker value enters either raw transfer or committed companion.
+
+This task changed the lifecycle, command manifest, permissions and feature app. Rerun the complete schema-v2 four-platform raw WRY matrix from Task 4, including all application-IPC predicates, exact per-vector results, zero canary-server hits, nonpersistent storage, policy-before-first-network-navigation, fault/late-callback isolation, active-host ordinary main close and 20-cycle leak checks. Refresh `artifacts/feasibility/signature-webview.raw.json` and rebuild its Markdown/JSON companion. Updater-specific real exit is proven only by the three release-architecture rows above; it is not duplicated into Task 4's four runtime-authority rows. Reusing or field-copying the old signature companion must fail its schema/design/scope checks.
+
+The same raw-host and ACL files are in the GD gate scope. Therefore rerun the three fixed GD cases in fresh quota windows, refresh `artifacts/feasibility/gd-contract-pagination.raw.json` and rebuild its Markdown/JSON companion; do not merely rehash the Task 5 result.
+
+The separate-target final feature/default builds in Step 6 and `pnpm verify:default-artifacts` must pass on every architecture; never rebuild default into `src-tauri/target/feasibility`. This proves updater probe commands and environment-variable names do not enter the normal artifact while preserving the exact feature executable used by the external runner.
 
 ```powershell
 node scripts/feasibility-evidence.mjs build --input artifacts/feasibility/updater-exit-barrier.raw.json --markdown docs/feasibility/updater-exit-barrier.md --output docs/feasibility/updater-exit-barrier.json
 node scripts/feasibility-evidence.mjs build --input artifacts/feasibility/signature-webview.raw.json --markdown docs/feasibility/signature-webview.md --output docs/feasibility/signature-webview.json
+node scripts/feasibility-evidence.mjs build --input artifacts/feasibility/gd-contract-pagination.raw.json --markdown docs/feasibility/gd-contract-pagination.md --output docs/feasibility/gd-contract-pagination.json
 node scripts/feasibility-evidence.mjs check docs/feasibility/updater-exit-barrier.json
 node scripts/feasibility-evidence.mjs check docs/feasibility/signature-webview.json
-git add docs/feasibility/updater-exit-barrier.md docs/feasibility/updater-exit-barrier.json docs/feasibility/signature-webview.md docs/feasibility/signature-webview.json docs/decisions/0002-signature-webview.md docs/decisions/0006-updater-exit-barrier.md
+node scripts/feasibility-evidence.mjs check docs/feasibility/gd-contract-pagination.json
+git add docs/feasibility/updater-exit-barrier.md docs/feasibility/updater-exit-barrier.json docs/feasibility/signature-webview.md docs/feasibility/signature-webview.json docs/feasibility/gd-contract-pagination.md docs/feasibility/gd-contract-pagination.json docs/decisions/0001-gd-pagination.md docs/decisions/0002-signature-webview.md docs/decisions/0006-updater-exit-barrier.md
 git commit -m "docs: record updater and refreshed isolation evidence"
 ```
 
@@ -3318,11 +3957,12 @@ stale scope digest after one-byte source change -> fail
 missing, extra or substituted exact scope-manifest path -> fail
 testedCommit not an ancestor or dirty-scope evidence -> fail
 one-byte ADR change after evidence generation -> fail
-signature bridge present, missing WebView2 111 baseline, unknown filter mode or direct/nested resource canary hit -> fail
+GD default source is not Netease, default count is not 20, a search count outside 1–1000 reaches rendering, the count=1000 live case is missing, or pagination/response predicates differ -> fail
+signature schema is not exactly 2, legacy ipcBridgeAbsent appears, rawWryHost/managed-WebView flags are wrong, Tauri globals/application IPC handler/response/state effect appears, fixed WebView2 111 is missing, host/child/translation or resource-policy/runtime version correlation is invalid, policy-before-first-network-navigation/official-finish/storage/lifecycle/fault/late-callback checks fail, policy-store cleanup or zero-tombstone-before-exit is absent, a per-vector key/result/evidence/barrier mapping differs, a non-service-worker or probe-error result is labeled unavailable, a required macOS counterfactual is absent, redirect hop counts differ, either row/top-level protected-hit sum disagrees, or any protected canary hit occurs -> fail
 network peer pin/body limit/proxy check false -> fail
 atomic winner count other than one -> fail
 media negative family accepted -> fail
-updater fake-only wait result, early exit/install, or missing numeric timeout/feedback -> fail
+updater fake-only wait result, wrong host/child architecture or translated macOS process, missing nonce-bound app-report/server-close merge, caller-supplied disconnect time or wrong exit-request clock origin, classification exact key/type/timeout/bound mismatch, missing or invalid derived production constant, request timeout below derived transfer minimum, policy/ADR/text mismatch, selected mode inconsistent with validation, any platform productionValidation not true/bounded, early exit/install, either terminal action bypasses the shared composite teardown, missing/extra active-signature-host platform/profile row, no active-host-ready prefix, invalid/non-increasing ordinal, native/manager/policy/tombstone/TLS check not before app-exit invocation, process exit not observed afterward, nonzero/forced exit, or caller-supplied cleanup aggregate disagreement -> fail
 performance inputs with different SHA, dirty flag, missing macOS row, stale scope or exceeded budget -> fail
 missing required decision or result file -> fail
 wrong design commit -> fail
@@ -3342,7 +3982,7 @@ Expected: FAIL because the validator is absent.
 Implement `scripts/check-phase1-gate.mjs` with these constants:
 
 ```js
-export const DESIGN_COMMIT = '5893d4340a4815677da79f74223642ac855519e7';
+export const DESIGN_COMMIT = '782b30d8eb1075cce708ddef878cd236d2fa7dc2';
 export const REQUIRED = new Map([
   ['toolchain-ci', { result: 'docs/feasibility/toolchain-ci.json', decisions: [], platforms: ['windows-x64', 'macos-intel', 'macos-arm64'], rule: 'toolchain' }],
   ['gd-contract-pagination', { result: 'docs/feasibility/gd-contract-pagination.json', decisions: ['docs/decisions/0001-gd-pagination.md'], platforms: [], rule: 'gd' }],
@@ -3355,7 +3995,7 @@ export const REQUIRED = new Map([
 ]);
 ```
 
-Import and call `validateEvidence` for the first seven companions and the Task 9 report validator for performance. Load `evidence-scopes.json` and require exact set equality for each gate; raw or companion JSON cannot choose its own scope. Require exact platform-set equality, current nonempty Markdown and ADR hashes, current scope hash, valid clean ancestor `testedCommit`, and each gate-specific predicate from the Machine-Readable Evidence Contract. `collectPhase1Results` derives aggregate entries from validated companions; no caller can supply status `pass`. Support only:
+Import and call `validateEvidence` for the first seven companions and the Task 9 report validator for performance. Require schema version 2 and the exact revised design commit on the first seven common-envelope companions; reject legacy signature keys rather than tolerating mixed v1/v2 semantics. The performance validator instead enforces its independent schema, exact final tested SHA, platform set and current common scope/Markdown/ADR hashes. Load `evidence-scopes.json` and require exact set equality for each gate; raw or companion JSON cannot choose its own scope. Require exact platform-set equality, current nonempty Markdown and ADR hashes, current scope hash, valid clean ancestor `testedCommit`, and each gate-specific predicate from the Machine-Readable Evidence Contract. The signature rule validates exact-key per-platform rows, all derived fields/maps, host/child/translation correlations and composite teardown. The updater rule independently recomputes classification bounds, policy derivation, host/child correlation, profile ordinals, seven-field cleanup summary, production-validation equality and ADR text/constants. `collectPhase1Results` derives aggregate entries from validated companions; no caller can supply status `pass`. Support only:
 
 ```text
 node scripts/check-phase1-gate.mjs --write docs/feasibility/phase-1-results.json
@@ -3387,7 +4027,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --features feasibility gd_live -
 cargo test --manifest-path src-tauri/Cargo.toml --features feasibility --test updater_probe -- --nocapture --test-threads=1
 ```
 
-Do not add live GD, absolute performance or actual updater probes to ordinary hosted CI. Add `"test:phase1-gate": "node --test scripts/check-phase1-gate.test.mjs"` to package scripts and append that deterministic test, not strict historical evidence validation, to ordinary `quality`; `quality.yml` continues to run `pnpm quality`. In `platform-windows`, after the default debug build, add a final step guarded by `hashFiles('docs/feasibility/phase-1-results.json') != ''` that runs `pnpm phase1:gate`; the pre-aggregate gate-mechanics commit skips it, while the final evidence commit must execute it. The macOS jobs run the feature suites above, so their aggregate check remains the stable macOS proof.
+Do not add live GD, absolute performance or actual updater probes to ordinary hosted CI. Retain Task 8's deterministic `test:updater-exit-runner` inside `quality`. Add `"test:phase1-gate": "node --test scripts/check-phase1-gate.test.mjs"` to package scripts and append that deterministic test, not strict historical evidence validation, to ordinary `quality`; `quality.yml` continues to run `pnpm quality`. In `platform-windows`, after the default debug build, add a final step guarded by `hashFiles('docs/feasibility/phase-1-results.json') != ''` that runs `pnpm phase1:gate`; the pre-aggregate gate-mechanics commit skips it, while the final evidence commit must execute it. The macOS jobs run the feature suites above, so their aggregate check remains the stable macOS proof.
 
 - [ ] **Step 5: Commit gate mechanics and verify their exact code commit in CI**
 
@@ -3415,7 +4055,7 @@ Push the `phase1/**` branch and wait for push-event `quality`, `platform-windows
 
 - [ ] **Step 6: Re-observe every gate on the frozen code commit, then generate the aggregate**
 
-Set `$finalCodeSha` to the Step 5 commit and require a clean tracked worktree. Before editing any Markdown, JSON or ADR, check out that exact SHA with full history on every required host and rerun all raw observations from Tasks 4–9: four-row signature isolation including fixed WebView2 111, three GD cases in separate quota windows, network on three architectures, NTFS/APFS atomic races, media round trips, both real updater profiles, and the Windows plus two macOS performance captures. Transfer only ignored sanitized raw JSON to the primary host. All raw inputs must name `$finalCodeSha`, record `clean=true`, and use unchanged scoped files. The Step 5 CI runs are the toolchain raw input.
+Set `$finalCodeSha` to the Step 5 commit and require a clean tracked worktree. Before editing any Markdown, JSON or ADR, check out that exact SHA with full history on every required host and rerun all raw observations from Tasks 4–9: the complete schema-v2 four-row raw WRY isolation/lifecycle matrix including fixed WebView2 111, exact per-vector results, child architecture/process-translation proof and composite active-host ordinary main close; three GD cases in separate quota windows; network on three architectures; NTFS/APFS atomic races; media round trips; all four nonce-bound updater runner profiles—final-SHA non-exiting classification, production-policy validation, cancelable real exit and wait-only real exit—on each of the three updater architecture rows; and the Windows plus two macOS performance captures. Both lifecycle runners must reject any platform ID inconsistent with the Node host or reported child binary and reject translated macOS children; the updater runner also merges app terminal reports with recorder-owned disconnect clocks for the first two profiles. Transfer only ignored sanitized raw JSON to the primary host. All raw inputs must name `$finalCodeSha`, record `clean=true`, and use unchanged scoped files. The Step 5 CI runs are the toolchain raw input. Because the design identity, common schema/helper and final scope changed, rebuild every companion from fresh raw inputs; no common-envelope schema-v1 JSON may be copied or edited forward, and the independent performance report must be finalized anew.
 
 While the tracked tree is still clean, validate the four performance inputs together:
 
@@ -3463,7 +4103,7 @@ Expected: the gate passes both before and after the commit and the worktree is c
 | §1–§3 identity, platform, toolchain | Tasks 1–2 |
 | §4 trust boundary | Tasks 1, 4, 5, 8 |
 | §5.1–§5.4 API/body/normalization/pagination | Tasks 3–4 |
-| §5.5 zero-capability signature WebView | Task 4 |
+| §5.5 zero-application-capability native host + raw WRY signature WebView | Task 4 |
 | §5.6 HTTPS/SSRF/DNS/redirect bounds | Task 5 |
 | §6.1–§6.4 product state, concurrency, DTO and errors | Deferred to Milestones 2–4 after the gate |
 | §6.5 exit/update barrier feasibility | Task 8 |
@@ -3493,10 +4133,13 @@ Expected: the gate passes both before and after the commit and the worktree is c
 - [Tauri capabilities](https://v2.tauri.app/security/capabilities/)
 - [Tauri permissions](https://v2.tauri.app/security/permissions/)
 - [Tauri runtime authority](https://v2.tauri.app/security/runtime-authority/)
-- [Tauri WebviewWindowBuilder 2.11.5](https://docs.rs/tauri/2.11.5/tauri/webview/struct.WebviewWindowBuilder.html)
-- [Tauri WebviewWindow 2.11.5](https://docs.rs/tauri/2.11.5/tauri/webview/struct.WebviewWindow.html)
-- [Tauri `with_webview`](https://docs.rs/tauri/2.11.5/tauri/webview/struct.WebviewWindow.html#method.with_webview)
-- [Tauri macOS `with_webview_configuration`](https://docs.rs/tauri/2.11.5/tauri/webview/struct.WebviewWindowBuilder.html#method.with_webview_configuration)
+- [Tauri native `WindowBuilder` 2.11.5](https://docs.rs/tauri/2.11.5/tauri/window/struct.WindowBuilder.html)
+- [Tauri `AppHandle::run_on_main_thread` 2.11.5](https://docs.rs/tauri/2.11.5/tauri/struct.AppHandle.html#method.run_on_main_thread)
+- [WRY `WebViewBuilder` 0.55.1](https://docs.rs/wry/0.55.1/wry/struct.WebViewBuilder.html)
+- [WRY `WebView` 0.55.1](https://docs.rs/wry/0.55.1/wry/struct.WebView.html)
+- [WRY Windows extension 0.55.1](https://docs.rs/wry/0.55.1/x86_64-pc-windows-msvc/wry/trait.WebViewExtWindows.html)
+- [WRY macOS builder extension 0.55.1](https://docs.rs/wry/0.55.1/x86_64-apple-darwin/wry/trait.WebViewBuilderExtMacos.html)
+- [WRY macOS WebView extension 0.55.1](https://docs.rs/wry/0.55.1/x86_64-apple-darwin/wry/trait.WebViewExtMacOS.html)
 - [Tauri updater guide](https://v2.tauri.app/plugin/updater/)
 - [Tauri Update API](https://docs.rs/tauri-plugin-updater/2.10.1/tauri_plugin_updater/struct.Update.html)
 - [Tauri UpdaterBuilder API](https://docs.rs/tauri-plugin-updater/2.10.1/tauri_plugin_updater/struct.UpdaterBuilder.html)
