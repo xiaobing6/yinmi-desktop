@@ -12,6 +12,7 @@ on:
       - 'v*'
 
 permissions:
+  actions: read
   contents: write
 
 concurrency:
@@ -26,9 +27,27 @@ jobs:
     name: Validate and prepare release
     runs-on: ubuntu-latest
     outputs:
+      prebuilt_run: ${{ steps.prebuilt.outputs.run_id }}
+      sha: ${{ steps.source.outputs.sha }}
       tag: ${{ steps.release.outputs.tag }}
     steps:
+      - name: Resolve release commit
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha'); then
+            if [[ "$GITHUB_EVENT_NAME" != 'workflow_dispatch' ]]; then
+              exit 1
+            fi
+            sha="$GITHUB_SHA"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.source.outputs.sha }}
 
       - uses: actions/setup-node@v6
         with:
@@ -55,6 +74,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>/dev/null); then
             if [[ "$draft" != 'true' ]]; then
@@ -63,11 +83,48 @@ jobs:
             fi
           else
             gh release create "$RELEASE_TAG" \
+              --target "$RELEASE_SHA" \
               --draft \
               --generate-notes \
               --title "音觅 ${RELEASE_TAG}" \
               --notes '可直接下载安装；完整变更记录如下。'
           fi
+
+      - name: Find reusable binaries for this commit
+        id: prebuilt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          runs_url="repos/$GITHUB_REPOSITORY/actions/workflows/quality.yml/runs?branch=master&event=push&head_sha=$RELEASE_SHA&per_page=10"
+          run_id=''
+
+          for attempt in 1 2 3; do
+            run_id=$(gh api "$runs_url" --jq '.workflow_runs | map(select(.conclusion == "success")) | first | .id // empty')
+            [[ -n "$run_id" ]] && break
+
+            active_run=$(gh api "$runs_url" --jq '.workflow_runs | map(select(.status != "completed")) | first | .id // empty')
+            if [[ -n "$active_run" ]]; then
+              gh run watch "$active_run" --exit-status || true
+              run_id=$(gh api "$runs_url" --jq '.workflow_runs | map(select(.conclusion == "success")) | first | .id // empty')
+              break
+            fi
+
+            sleep 10
+          done
+
+          if [[ -n "$run_id" ]]; then
+            windows_name="release-prebuilt-windows-$RELEASE_SHA"
+            macos_name="release-prebuilt-macos-$RELEASE_SHA"
+            artifact_count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
+              --jq ".artifacts | map(select(.expired == false and (.name == \"$windows_name\" or .name == \"$macos_name\"))) | length")
+            if [[ "$artifact_count" != '2' ]]; then
+              run_id=''
+            fi
+          fi
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
 
       - name: Export release tag
         id: release
@@ -82,6 +139,8 @@ jobs:
       RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: pnpm/action-setup@v6
         with:
@@ -93,19 +152,29 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.prepare.outputs.prebuilt_run == ''
         with:
           toolchain: 1.97.0
           targets: x86_64-pc-windows-msvc
 
       - uses: Swatinem/rust-cache@v2
+        if: needs.prepare.outputs.prebuilt_run == ''
         with:
           workspaces: src-tauri -> target
           shared-key: release-windows-x64
-          key: ${{ github.sha }}
-          cache-workspace-crates: true
           save-if: false
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Download reusable Windows application
+        if: needs.prepare.outputs.prebuilt_run != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: release-prebuilt-windows-${{ needs.prepare.outputs.sha }}
+          path: src-tauri/target/x86_64-pc-windows-msvc/release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.prepare.outputs.prebuilt_run }}
 
       - name: Build and upload signed Windows installer
         uses: tauri-apps/tauri-action@v1
@@ -121,7 +190,7 @@ jobs:
           uploadUpdaterJson: true
           uploadUpdaterSignatures: true
           retryAttempts: 2
-          tauriScript: pnpm tauri
+          tauriScript: ${{ needs.prepare.outputs.prebuilt_run != '' && 'node scripts/tauri-bundle-prebuilt.mjs' || 'pnpm tauri' }}
           args: >-
             --target x86_64-pc-windows-msvc
             --bundles nsis
@@ -135,6 +204,8 @@ jobs:
       RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: pnpm/action-setup@v6
         with:
@@ -146,19 +217,33 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.prepare.outputs.prebuilt_run == ''
         with:
           toolchain: 1.97.0
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
+        if: needs.prepare.outputs.prebuilt_run == ''
         with:
           workspaces: src-tauri -> target
           shared-key: release-macos-universal
-          key: ${{ github.sha }}
-          cache-workspace-crates: true
           save-if: false
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Download reusable macOS application
+        if: needs.prepare.outputs.prebuilt_run != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: release-prebuilt-macos-${{ needs.prepare.outputs.sha }}
+          path: src-tauri/target/universal-apple-darwin/release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.prepare.outputs.prebuilt_run }}
+
+      - name: Restore macOS executable permission
+        if: needs.prepare.outputs.prebuilt_run != ''
+        run: chmod +x src-tauri/target/universal-apple-darwin/release/yinmi
 
       - name: Build signed universal app and add it to the draft release
         uses: tauri-apps/tauri-action@v1
@@ -173,7 +258,7 @@ jobs:
           uploadUpdaterJson: false
           uploadUpdaterSignatures: true
           retryAttempts: 2
-          tauriScript: pnpm tauri
+          tauriScript: ${{ needs.prepare.outputs.prebuilt_run != '' && 'node scripts/tauri-bundle-prebuilt.mjs' || 'pnpm tauri' }}
           args: >-
             --target universal-apple-darwin
             --bundles app,dmg
@@ -185,6 +270,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: actions/setup-node@v6
         with:

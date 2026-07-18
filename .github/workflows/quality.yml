@@ -65,8 +65,6 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: release-macos-universal
-          key: ${{ github.sha }}
-          cache-workspace-crates: true
       - run: pnpm install --frozen-lockfile
       - if: github.event_name != 'push' || github.ref != 'refs/heads/master'
         run: pnpm run build
@@ -76,13 +74,23 @@ jobs:
           cargo check
           --manifest-path src-tauri/Cargo.toml
           --target aarch64-apple-darwin
-      - name: Prebuild macOS universal Tauri application
+      - name: Build reusable macOS universal application
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: >-
           pnpm tauri build
           --no-bundle
           --target universal-apple-darwin
           --config tauri.release.json
+      - name: Upload reusable macOS application
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-prebuilt-macos-${{ github.sha }}
+          path: src-tauri/target/universal-apple-darwin/release/yinmi
+          compression-level: 0
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
   windows-release-cache:
     name: Prebuild Windows release target
@@ -107,11 +115,19 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: release-windows-x64
-          key: ${{ github.sha }}
-          cache-workspace-crates: true
       - run: pnpm install --frozen-lockfile
-      - run: >-
+      - name: Build reusable Windows application
+        run: >-
           pnpm tauri build
           --no-bundle
           --target x86_64-pc-windows-msvc
           --config tauri.release.json
+      - name: Upload reusable Windows application
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-prebuilt-windows-${{ github.sha }}
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/yinmi.exe
+          compression-level: 0
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
