@@ -1413,6 +1413,7 @@ fn activate_macos_raw_child_on_ui(
     };
     pending.trace.record(CreationStep::ReadyTransition);
     let result_sender = pending.initialization_result.take();
+    let ticket = Arc::clone(&pending.ticket);
     RAW_SIGNATURE_SLOT.with(|slot| {
         *slot.borrow_mut() =
             MainThreadSignatureSlot::Ready(Box::new(MainThreadSignatureInstance {
@@ -1422,15 +1423,15 @@ fn activate_macos_raw_child_on_ui(
                 webview,
                 policy,
                 _counters: counters,
-                ticket: Arc::clone(&pending.ticket),
+                ticket: Arc::clone(&ticket),
                 trace: pending.trace,
             }));
     });
-    if pending.ticket.is_cancelled() {
+    if ticket.is_cancelled() {
         if let Some(sender) = result_sender {
             let _ = sender.send(Err(SignatureError::Cancelled));
         }
-        let _ = destroy_generation_on_ui(&pending.ticket);
+        let _ = destroy_generation_on_ui(&ticket);
         return;
     }
     let navigation_result = RAW_SIGNATURE_SLOT.with(|slot| {
@@ -1457,7 +1458,7 @@ fn activate_macos_raw_child_on_ui(
             if let Some(sender) = result_sender {
                 let _ = sender.send(Err(error));
             }
-            let _ = destroy_generation_on_ui(&pending.ticket);
+            let _ = destroy_generation_on_ui(&ticket);
         }
     }
 }
