@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-retry-failed"
+description = "Enables the music_retry_failed command without any pre-configured scope."
+commands.allow = ["music_retry_failed"]
+
+[[permission]]
+identifier = "deny-music-retry-failed"
+description = "Denies the music_retry_failed command without any pre-configured scope."
+commands.deny = ["music_retry_failed"]

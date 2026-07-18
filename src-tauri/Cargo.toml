@@ -13,13 +13,57 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+futures-util = { version = "0.3", optional = true }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"], optional = true }
+lofty = { version = "0.24", optional = true }
+log = "0.4"
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "stream"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = { version = "0.10", optional = true }
 tauri = { version = "2.11.5", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-log = "2"
+tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
 thiserror = "2"
+time = { version = "0.3", features = ["formatting", "parsing"], optional = true }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "sync", "time"], optional = true }
+tokio-util = { version = "0.7", features = ["rt"], optional = true }
 url = "2"
+wry = { version = "=0.55.1", default-features = false, features = ["os-webview"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = { version = "0.38", optional = true }
+windows-core = { version = "0.61", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = { version = "0.6", optional = true }
+libc = { version = "0.2", optional = true }
+objc2 = { version = "0.6", optional = true }
+objc2-foundation = { version = "0.3", optional = true }
+objc2-web-kit = { version = "0.3", features = ["WKContentRuleList", "WKContentRuleListStore", "WKUserContentController", "WKWebView", "WKWebViewConfiguration", "WKWebsiteDataStore"], optional = true }
 
 [features]
-default = ["custom-protocol"]
+default = ["custom-protocol", "feasibility"]
 custom-protocol = ["tauri/custom-protocol"]
-feasibility = []
+feasibility = [
+    "tauri/unstable",
+    "dep:futures-util",
+    "dep:image",
+    "dep:lofty",
+    "dep:reqwest",
+    "dep:sha2",
+    "dep:time",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:wry",
+    "dep:webview2-com",
+    "dep:windows-core",
+    "dep:block2",
+    "dep:libc",
+    "dep:objc2",
+    "dep:objc2-foundation",
+    "dep:objc2-web-kit",
+]

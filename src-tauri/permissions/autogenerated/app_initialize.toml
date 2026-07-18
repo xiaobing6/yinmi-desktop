@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-initialize"
+description = "Enables the app_initialize command without any pre-configured scope."
+commands.allow = ["app_initialize"]
+
+[[permission]]
+identifier = "deny-app-initialize"
+description = "Denies the app_initialize command without any pre-configured scope."
+commands.deny = ["app_initialize"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-cancel-all-downloads"
+description = "Enables the music_cancel_all_downloads command without any pre-configured scope."
+commands.allow = ["music_cancel_all_downloads"]
+
+[[permission]]
+identifier = "deny-music-cancel-all-downloads"
+description = "Denies the music_cancel_all_downloads command without any pre-configured scope."
+commands.deny = ["music_cancel_all_downloads"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-set-update-active"
+description = "Enables the app_set_update_active command without any pre-configured scope."
+commands.allow = ["app_set_update_active"]
+
+[[permission]]
+identifier = "deny-app-set-update-active"
+description = "Denies the app_set_update_active command without any pre-configured scope."
+commands.deny = ["app_set_update_active"]

@@ -47,7 +47,8 @@ impl TryFrom<&str> for SignatureValue {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SearchOperation {
     Track,
     Album,
@@ -64,7 +65,8 @@ impl SearchOperation {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GdSource {
     NeteaseMusic,
     QqMusic,
@@ -251,6 +253,7 @@ pub struct ProbeSongKey {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProbeSong {
     pub id: String,
     pub name: String,
@@ -307,7 +310,7 @@ fn duration_ms(value: Option<&Value>) -> Option<u64> {
     seconds.checked_mul(1_000)
 }
 
-pub fn parse_search_page(bytes: &[u8]) -> Result<ParsedSearchPage, ContractError> {
+pub fn parse_search_page_lenient(bytes: &[u8]) -> Result<ParsedSearchPage, ContractError> {
     let value: Value = serde_json::from_slice(bytes).map_err(|_| ContractError::InvalidTopLevel)?;
     let rows = value.as_array().ok_or(ContractError::InvalidTopLevel)?;
     let mut songs = Vec::new();
@@ -354,14 +357,19 @@ pub fn parse_search_page(bytes: &[u8]) -> Result<ParsedSearchPage, ContractError
         });
     }
 
-    if !rows.is_empty() && songs.is_empty() {
-        return Err(ContractError::NoValidSongs);
-    }
     Ok(ParsedSearchPage {
         raw_records: rows.len(),
         skipped_records: rows.len() - songs.len(),
         songs,
     })
+}
+
+pub fn parse_search_page(bytes: &[u8]) -> Result<ParsedSearchPage, ContractError> {
+    let parsed = parse_search_page_lenient(bytes)?;
+    if parsed.raw_records > 0 && parsed.songs.is_empty() {
+        return Err(ContractError::NoValidSongs);
+    }
+    Ok(parsed)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -529,6 +537,7 @@ pub fn parse_lyric_response(bytes: &[u8]) -> Result<LyricPayload, ContractError>
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StopReason {
     TargetReached,
     RawEmptyPage,

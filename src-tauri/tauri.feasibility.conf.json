@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeDevCommand": "pnpm dev --mode feasibility",
+    "beforeBuildCommand": "pnpm build --mode feasibility"
+  },
+  "app": {
+    "security": {
+      "capabilities": ["feasibility-main"]
+    }
+  }
+}

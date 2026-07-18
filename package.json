@@ -20,13 +20,19 @@
     "verify:ci": "node scripts/verify-ci.mjs",
     "test:evidence": "node --test scripts/feasibility-evidence.test.mjs",
     "test:signature-host": "node --test scripts/verify-signature-host.test.mjs",
+    "test:signature-lifecycle-runner": "node --test scripts/run-signature-lifecycle-probe.test.mjs",
     "verify:evidence": "node scripts/feasibility-evidence.mjs check-existing docs/feasibility",
     "verify:signature-host": "node scripts/verify-signature-host.mjs",
-    "quality": "pnpm format:check && pnpm lint && pnpm check && pnpm test && pnpm build && pnpm verify:config && pnpm verify:ci && pnpm test:evidence && pnpm test:signature-host",
+    "verify:default-artifacts": "node scripts/verify-default-artifacts.mjs",
+    "quality": "pnpm format:check && pnpm lint && pnpm check && pnpm test && pnpm build && pnpm verify:config && pnpm verify:ci && pnpm test:evidence && pnpm test:signature-host && pnpm test:signature-lifecycle-runner && pnpm verify:signature-host",
     "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-log": "^2.9.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "svelte": "5.56.5"
   },
   "devDependencies": {

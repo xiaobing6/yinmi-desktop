@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "feasibility"
+description = "Allows the local main window to run the isolated feasibility probes."
+commands.allow = [
+  "feasibility_signature_initialize",
+  "feasibility_signature_sign",
+  "feasibility_signature_destroy",
+  "feasibility_signature_isolation",
+  "feasibility_run_gd_probe",
+  "feasibility_ipc_canary",
+]

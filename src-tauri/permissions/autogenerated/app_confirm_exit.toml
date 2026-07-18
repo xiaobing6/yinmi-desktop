@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-confirm-exit"
+description = "Enables the app_confirm_exit command without any pre-configured scope."
+commands.allow = ["app_confirm_exit"]
+
+[[permission]]
+identifier = "deny-app-confirm-exit"
+description = "Denies the app_confirm_exit command without any pre-configured scope."
+commands.deny = ["app_confirm_exit"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-get-default-directory"
+description = "Enables the music_get_default_directory command without any pre-configured scope."
+commands.allow = ["music_get_default_directory"]
+
+[[permission]]
+identifier = "deny-music-get-default-directory"
+description = "Denies the music_get_default_directory command without any pre-configured scope."
+commands.deny = ["music_get_default_directory"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-open-log-directory"
+description = "Enables the app_open_log_directory command without any pre-configured scope."
+commands.allow = ["app_open_log_directory"]
+
+[[permission]]
+identifier = "deny-app-open-log-directory"
+description = "Denies the app_open_log_directory command without any pre-configured scope."
+commands.deny = ["app_open_log_directory"]

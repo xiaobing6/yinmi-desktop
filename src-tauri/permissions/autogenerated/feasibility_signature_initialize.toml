@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feasibility-signature-initialize"
+description = "Enables the feasibility_signature_initialize command without any pre-configured scope."
+commands.allow = ["feasibility_signature_initialize"]
+
+[[permission]]
+identifier = "deny-feasibility-signature-initialize"
+description = "Denies the feasibility_signature_initialize command without any pre-configured scope."
+commands.deny = ["feasibility_signature_initialize"]

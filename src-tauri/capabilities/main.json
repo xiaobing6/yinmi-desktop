@@ -4,5 +4,15 @@
   "description": "Local main window only",
   "local": true,
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "allow-music-search",
+    "allow-music-download",
+    "allow-app-runtime",
+    "dialog:default",
+    "log:default",
+    "updater:default",
+    "process:allow-restart",
+    "process:allow-exit"
+  ]
 }

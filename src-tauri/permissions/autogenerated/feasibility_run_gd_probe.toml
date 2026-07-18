@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feasibility-run-gd-probe"
+description = "Enables the feasibility_run_gd_probe command without any pre-configured scope."
+commands.allow = ["feasibility_run_gd_probe"]
+
+[[permission]]
+identifier = "deny-feasibility-run-gd-probe"
+description = "Denies the feasibility_run_gd_probe command without any pre-configured scope."
+commands.deny = ["feasibility_run_gd_probe"]

@@ -1,6 +1,193 @@
-<svelte:head><title>音觅</title></svelte:head>
+<script lang="ts">
+  import { invoke } from '@tauri-apps/api/core';
+  import { exit } from '@tauri-apps/plugin-process';
+  import type { Component } from 'svelte';
+  import { onMount } from 'svelte';
+  import SearchPage from './lib/product/SearchPage.svelte';
 
-<main>
-  <h1>音觅</h1>
-  <p>第一阶段可行性验证</p>
-</main>
+  const feasibilityMode = import.meta.env.MODE === 'feasibility';
+  let productReady = feasibilityMode;
+  let startupError = '';
+  let starting = !feasibilityMode;
+  let FeasibilityPanel: Component | undefined;
+  if (feasibilityMode) {
+    void import('./lib/feasibility/FeasibilityPanel.svelte').then(
+      ({ default: component }) => {
+        FeasibilityPanel = component;
+      },
+    );
+  }
+
+  const errorText = (error: unknown) =>
+    typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message: unknown }).message)
+      : String(error);
+
+  async function initializeProduct() {
+    starting = true;
+    startupError = '';
+    try {
+      await Promise.all([
+        invoke('app_initialize'),
+        new Promise((resolve) => window.setTimeout(resolve, 380)),
+      ]);
+      productReady = true;
+    } catch (error) {
+      startupError = errorText(error);
+    } finally {
+      starting = false;
+    }
+  }
+
+  onMount(() => {
+    if (!feasibilityMode) void initializeProduct();
+  });
+</script>
+
+{#if feasibilityMode}
+  <main class="feasibility">
+    <header>
+      <h1>音觅</h1>
+      <p>第一阶段可行性验证</p>
+    </header>
+    {#if FeasibilityPanel}<FeasibilityPanel />{/if}
+  </main>
+{:else if !productReady}
+  <main class="splash" aria-live="polite" aria-label="正在启动音觅">
+    <div class="splash-mark" aria-hidden="true"><i></i><i></i><b></b></div>
+    <h1>音觅</h1>
+    <p>{startupError || (starting ? '正在准备音乐服务…' : '启动未完成')}</p>
+    {#if startupError}
+      <div class="splash-actions">
+        <button type="button" onclick={() => void initializeProduct()}
+          >重试</button
+        >
+        <button
+          type="button"
+          onclick={() => void invoke('app_open_log_directory')}
+          >打开日志目录</button
+        >
+        <button class="quit" type="button" onclick={() => void exit(1)}
+          >退出</button
+        >
+      </div>
+    {/if}
+  </main>
+{:else}
+  <SearchPage />
+{/if}
+
+<style>
+  main.feasibility {
+    display: block;
+    box-sizing: border-box;
+    min-height: 100vh;
+    padding: 28px clamp(18px, 4vw, 56px) 48px;
+    text-align: left;
+  }
+  main.feasibility header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    max-width: 1180px;
+    margin: 0 auto 18px;
+    border-bottom: 1px solid #b8c0c8;
+    padding-bottom: 14px;
+  }
+  main.feasibility h1 {
+    margin: 0;
+    color: #17202a;
+    font-size: 1.35rem;
+    letter-spacing: 0.08em;
+  }
+  main.feasibility p {
+    margin: 0;
+    color: #5a626a;
+    font:
+      0.78rem/1.3 ui-monospace,
+      'Cascadia Code',
+      monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  main.splash {
+    display: grid;
+    place-content: center;
+    place-items: center;
+    min-height: 100vh;
+    background: #f6f9fc;
+    color: #16283e;
+  }
+  main.splash h1 {
+    margin: 16px 0 2px;
+    font-size: 1.55rem;
+    letter-spacing: 0.16em;
+  }
+  main.splash p {
+    margin: 0;
+    color: #718091;
+    font-size: 0.76rem;
+  }
+  .splash-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .splash-actions button {
+    cursor: pointer;
+    border: 0;
+    border-radius: 5px;
+    background: #1478c9;
+    padding: 9px 15px;
+    color: #fff;
+    font:
+      700 0.75rem/1 system-ui,
+      sans-serif;
+  }
+  .splash-actions .quit {
+    background: #e5edf3;
+    color: #425d73;
+  }
+  .splash-mark {
+    position: relative;
+    width: 58px;
+    height: 58px;
+    border-radius: 17px;
+    background: #1478c9;
+    box-shadow: 0 12px 30px #1478c92e;
+  }
+  .splash-mark i,
+  .splash-mark b {
+    position: absolute;
+    border-radius: 50%;
+  }
+  .splash-mark i {
+    border: 2px solid #ffffffb8;
+    animation: splash-pulse 0.8s ease-out both;
+  }
+  .splash-mark i:first-child {
+    inset: 11px;
+  }
+  .splash-mark i:nth-child(2) {
+    inset: 21px;
+    animation-delay: 0.08s;
+  }
+  .splash-mark b {
+    right: 10px;
+    top: 10px;
+    width: 10px;
+    height: 10px;
+    background: #4ac58b;
+  }
+  @keyframes splash-pulse {
+    from {
+      opacity: 0;
+      transform: scale(0.7);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .splash-mark i {
+      animation: none;
+    }
+  }
+</style>

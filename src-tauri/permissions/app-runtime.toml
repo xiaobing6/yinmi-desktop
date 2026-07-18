@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-app-runtime"
+description = "Allows the local main window to initialize the product, inspect logs, and coordinate safe exit or restart."
+commands.allow = [
+  "app_initialize",
+  "app_open_log_directory",
+  "app_cancel_exit",
+  "app_set_update_active",
+  "app_confirm_exit",
+  "app_prepare_restart"
+]

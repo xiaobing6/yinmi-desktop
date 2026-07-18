@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "feasibility-main",
+  "description": "Local feasibility controls for the main window only",
+  "local": true,
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "feasibility",
+    "allow-music-search",
+    "allow-music-download",
+    "allow-app-runtime",
+    "dialog:default",
+    "log:default",
+    "updater:default",
+    "process:allow-restart",
+    "process:allow-exit"
+  ]
+}

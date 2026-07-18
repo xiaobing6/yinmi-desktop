@@ -2,4 +2,5 @@ docs/
 README.md
 artifacts/
 src-tauri/target/
+src-tauri/tests/fixtures/
 dist/

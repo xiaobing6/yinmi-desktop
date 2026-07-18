@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feasibility-ipc-canary"
+description = "Enables the feasibility_ipc_canary command without any pre-configured scope."
+commands.allow = ["feasibility_ipc_canary"]
+
+[[permission]]
+identifier = "deny-feasibility-ipc-canary"
+description = "Denies the feasibility_ipc_canary command without any pre-configured scope."
+commands.deny = ["feasibility_ipc_canary"]

@@ -119,15 +119,13 @@ const withCommon = (paths) => [...new Set([...COMMON_SCOPE, ...paths])].sort();
 const TASK_4_SCOPE = [
   'package.json',
   'pnpm-lock.yaml',
-  'scripts/verify-signature-host.mjs',
-  'scripts/verify-signature-host.test.mjs',
+  'scripts/run-signature-lifecycle-probe.mjs',
+  'scripts/run-signature-lifecycle-probe.test.mjs',
+  'scripts/signature-wire-contract.mjs',
   'scripts/verify-config.mjs',
   'scripts/verify-default-artifacts.mjs',
-  'src/App.svelte',
-  'src/App.test.ts',
-  'src/lib/feasibility/FeasibilityPanel.svelte',
-  'src/lib/feasibility/GdProbe.svelte',
-  'src/vite-env.d.ts',
+  'scripts/verify-signature-host.mjs',
+  'scripts/verify-signature-host.test.mjs',
   'src-tauri/Cargo.lock',
   'src-tauri/Cargo.toml',
   'src-tauri/build.rs',
@@ -144,6 +142,13 @@ const TASK_4_SCOPE = [
   'src-tauri/src/lib.rs',
   'src-tauri/tauri.conf.json',
   'src-tauri/tauri.feasibility.conf.json',
+  'src-tauri/tests/fixtures/signature/windows-10-webview2-111-x64-isolation-report.json',
+  'src/App.svelte',
+  'src/App.test.ts',
+  'src/lib/feasibility/FeasibilityPanel.svelte',
+  'src/lib/feasibility/FeasibilityPanel.test.ts',
+  'src/lib/feasibility/GdProbe.svelte',
+  'src/vite-env.d.ts',
   'vite.config.ts',
 ];
 
@@ -1341,6 +1346,23 @@ test('signature-webview requires exact four-key derived maps', async (t) => {
   }
 });
 
+test('signature-webview accepts an exact multi-component WebKit bundle version', async () => {
+  const fixture = await createRepository('signature-webview');
+  const version = '620.1.16.11.10';
+  fixture.raw.checks.webviewRuntimeVersions['macos-current-arm64'] = version;
+  fixture.raw.checks.byPlatform['macos-current-arm64'].webviewRuntimeVersion =
+    version;
+
+  const evidence = await buildEvidence(fixture.raw, {
+    cwd: fixture.cwd,
+    markdownPath: fixture.markdownPath,
+  });
+  assert.equal(
+    evidence.checks.byPlatform['macos-current-arm64'].webviewRuntimeVersion,
+    version,
+  );
+});
+
 test('signature-webview enforces the host/child platform matrix and modes', async (t) => {
   const fixture = await createRepository('signature-webview');
   const row = (raw, id) => raw.checks.byPlatform[id];
@@ -1787,6 +1809,79 @@ test('signature-webview enforces exact per-vector result objects', async (t) => 
       'top-level canary total is nonzero',
       (raw) => {
         raw.checks.crossOriginCanaryServerHits = 1;
+      },
+    ],
+  ];
+  for (const [name, mutate] of cases) {
+    await t.test(name, async () => {
+      await assertMutationRejected(fixture, mutate);
+    });
+  }
+});
+
+test('signature-webview rejects Rust u64 values outside the JavaScript safe range', async (t) => {
+  const fixture = await createRepository('signature-webview');
+  const unsafe = Number.MAX_SAFE_INTEGER + 1;
+  const cases = [
+    [
+      'Windows optional blocked counter',
+      (raw) => {
+        raw.checks.byPlatform['windows-11-x64'].blockedCanaryAttempts = unsafe;
+      },
+    ],
+    [
+      'macOS paired counterfactual',
+      (raw) => {
+        raw.checks.byPlatform[
+          'macos-13-intel'
+        ].resourceVectorResults.document.counterfactualServerHits = unsafe;
+      },
+    ],
+  ];
+  for (const [name, mutate] of cases) {
+    await t.test(name, async () => {
+      await assertMutationRejected(fixture, mutate);
+    });
+  }
+});
+
+test('signature-webview characterizes platform and handler Option relations before extraction', async (t) => {
+  const fixture = await createRepository('signature-webview');
+  const result = (raw, id, vector) =>
+    raw.checks.byPlatform[id].resourceVectorResults[vector];
+  const cases = [
+    [
+      'Windows blocked counter is explicitly present',
+      (raw) => {
+        raw.checks.byPlatform['windows-11-x64'].blockedCanaryAttempts = null;
+      },
+    ],
+    [
+      'macOS resource evidence uses its counterfactual',
+      (raw) => {
+        result(raw, 'macos-13-intel', 'document').barrierEvidenceMode =
+          'native-callback';
+      },
+    ],
+    [
+      'handler evidence mode is exact',
+      (raw) => {
+        result(raw, 'windows-11-x64', 'popup').barrierEvidenceMode =
+          'native-callback';
+      },
+    ],
+    [
+      'handler counterfactual is explicitly null',
+      (raw) => {
+        result(raw, 'windows-11-x64', 'popup').counterfactualServerHits = 1;
+      },
+    ],
+    [
+      'handler barrier is exact',
+      (raw) => {
+        const popup = result(raw, 'windows-11-x64', 'popup');
+        popup.expectedBarrier = 'download-handler';
+        popup.enforcedBarrier = 'download-handler';
       },
     ],
   ];

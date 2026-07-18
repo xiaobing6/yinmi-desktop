@@ -1,0 +1,198 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag matching the app version (for example: v0.1.0)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  prepare:
+    name: Validate release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Require updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            echo 'TAURI_SIGNING_PRIVATE_KEY is required.' >&2
+            exit 1
+          fi
+
+      - name: Validate version and production updater endpoint
+        run: >-
+          node scripts/release-guard.mjs config
+          --tag "$RELEASE_TAG"
+          --repository "$GITHUB_REPOSITORY"
+
+      - name: Export release tag
+        id: release
+        shell: bash
+        run: echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Build Windows x64 NSIS
+    needs: prepare
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build signed Windows installer and create draft release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: '音觅 v__VERSION__'
+          releaseBody: '可直接下载安装；完整变更记录如下。'
+          generateReleaseNotes: true
+          releaseDraft: true
+          prerelease: false
+          updaterJsonPreferNsis: true
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          retryAttempts: 2
+          tauriScript: pnpm tauri
+          args: >-
+            --target x86_64-pc-windows-msvc
+            --bundles nsis
+            --config '{"bundle":{"createUpdaterArtifacts":true}}'
+
+  macos:
+    name: Build macOS universal
+    needs: [prepare, windows]
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build signed universal app and add it to the draft release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: '音觅 v__VERSION__'
+          releaseDraft: true
+          prerelease: false
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          retryAttempts: 2
+          tauriScript: pnpm tauri
+          args: >-
+            --target universal-apple-darwin
+            --bundles app,dmg
+            --config '{"bundle":{"createUpdaterArtifacts":true,"macOS":{"signingIdentity":"-"}}}'
+
+  publish:
+    name: Validate updater manifest and publish
+    needs: [prepare, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Download draft manifest and release inventory
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          mkdir -p release-finalize
+          gh release download "$TAG" --pattern latest.json --dir release-finalize --clobber
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > release-finalize/releases.json
+
+      - name: Add macOS universal key and validate signed assets
+        run: >-
+          node scripts/release-guard.mjs manifest
+          --tag "${{ needs.prepare.outputs.tag }}"
+          --repository "$GITHUB_REPOSITORY"
+          --manifest release-finalize/latest.json
+          --release release-finalize/releases.json
+
+      - name: Publish verified release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          gh release upload "$TAG" release-finalize/latest.json --clobber
+          gh release edit "$TAG" --draft=false --prerelease=false --latest
