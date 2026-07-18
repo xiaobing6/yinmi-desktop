@@ -4,124 +4,32 @@
   import { getVersion } from '@tauri-apps/api/app';
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
   import { onMount } from 'svelte';
+  import {
+    SEARCH_MODES,
+    SOURCES,
+    downloadProgressPercent,
+    errorText,
+    formatBytes,
+    formatDuration,
+    sourceLabel,
+    stopReasonLabel,
+    type DownloadBatchResult,
+    type DownloadItemResult,
+    type DownloadProgress,
+    type DownloadState,
+    type DownloadStateSnapshot,
+    type ExistingAudioScan,
+    type RateLimitNotice,
+    type SearchCompleteEvent,
+    type SearchMode,
+    type SearchResult,
+    type SearchStateSnapshot,
+    type Song,
+    type SourceCode,
+  } from '../music/model';
   import RuntimeTools from './RuntimeTools.svelte';
 
-  type SourceCode =
-    | 'netease_music'
-    | 'qq_music'
-    | 'kuwo_music'
-    | 'tidal'
-    | 'qobuz'
-    | 'joox'
-    | 'bilibili_music'
-    | 'apple_music'
-    | 'youtube_music'
-    | 'spotify';
-  type SearchMode = 'track' | 'album' | 'playlist';
-  type DownloadState = 'success' | 'skipped' | 'failed' | 'cancelled';
-  type DownloadProgressState = 'preparing' | 'downloading' | 'finished';
   type RetryTarget = string | 'all' | null;
-
-  interface Song {
-    id: string;
-    name: string;
-    artistDisplay: string;
-    album: string | null;
-    source: string;
-    urlId: string | null;
-    picId: string | null;
-    lyricId: string | null;
-    durationMs: number | null;
-    hasHires: boolean;
-  }
-  interface SearchResult {
-    requestId: number;
-    keyword: string;
-    source: SourceCode;
-    sourceName: string;
-    mode: SearchMode;
-    requestedCount: number;
-    returnedCount: number;
-    skippedRecords: number;
-    incomplete: boolean;
-    stopReason: string;
-    songs: Song[];
-  }
-  interface SearchStateSnapshot {
-    active: boolean;
-    result: SearchResult | null;
-  }
-  interface SearchCompleteEvent {
-    result: SearchResult | null;
-    error: { code: string; message: string } | null;
-  }
-  interface DownloadProgress {
-    batchId: number;
-    completed: number;
-    total: number;
-    currentSongId: string;
-    currentName: string;
-    succeeded: number;
-    skipped: number;
-    failed: number;
-    cancelled: number;
-    state: DownloadProgressState;
-    currentDownloadedBytes: number;
-    currentTotalBytes: number | null;
-    bytesPerSecond: number;
-  }
-  interface DownloadItemResult {
-    songId: string;
-    name: string;
-    state: DownloadState;
-    path: string | null;
-    bytes: number;
-    code: string | null;
-    message: string | null;
-    warnings: string[];
-  }
-  interface DownloadBatchResult {
-    batchId: number;
-    directory: string;
-    total: number;
-    succeeded: number;
-    skipped: number;
-    failed: number;
-    cancelled: number;
-    items: DownloadItemResult[];
-  }
-  interface DownloadStateSnapshot {
-    active: boolean;
-    progress: DownloadProgress | null;
-    activeItems: DownloadItemResult[];
-    lastResult: DownloadBatchResult | null;
-  }
-  interface ExistingAudioScan {
-    searchRequestId: number;
-    directory: string;
-    items: Array<{ songId: string; extensions: string[] }>;
-  }
-  interface RateLimitNotice {
-    waitSeconds: number;
-  }
-
-  const sources: Array<[SourceCode, string]> = [
-    ['netease_music', '网易云音乐'],
-    ['qq_music', 'QQ 音乐'],
-    ['kuwo_music', '酷我音乐'],
-    ['tidal', 'TIDAL'],
-    ['qobuz', 'Qobuz'],
-    ['joox', 'JOOX'],
-    ['bilibili_music', '哔哩哔哩'],
-    ['apple_music', 'Apple Music'],
-    ['youtube_music', 'YouTube Music'],
-    ['spotify', 'Spotify'],
-  ];
-  const modes: Array<[SearchMode, string]> = [
-    ['track', '单曲匹配'],
-    ['album', '专辑匹配'],
-    ['playlist', '歌单匹配'],
-  ];
 
   let keyword = '';
   let source: SourceCode = 'netease_music';
@@ -303,61 +211,6 @@
     result?.songs.filter((song) => song.urlId) ?? [];
   const selectedSongs = () =>
     downloadableSongs().filter((song) => selected.has(keyOf(song)));
-
-  function sourceLabel(code: string) {
-    const aliases: Record<string, SourceCode> = {
-      netease: 'netease_music',
-      tencent: 'qq_music',
-      kuwo: 'kuwo_music',
-      bilibili: 'bilibili_music',
-      apple: 'apple_music',
-      ytmusic: 'youtube_music',
-    };
-    const internal = aliases[code] ?? code;
-    return sources.find(([value]) => value === internal)?.[1] ?? code;
-  }
-
-  function errorText(error: unknown) {
-    return typeof error === 'object' && error !== null && 'message' in error
-      ? String((error as { message: unknown }).message)
-      : String(error);
-  }
-
-  function duration(value: number | null) {
-    if (value === null) return '--:--';
-    const seconds = Math.max(0, Math.floor(value / 1000));
-    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-  }
-
-  function bytes(value: number) {
-    if (value < 1024) return `${value} B`;
-    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
-    if (value < 1024 * 1024 * 1024)
-      return `${(value / 1024 / 1024).toFixed(1)} MiB`;
-    return `${(value / 1024 / 1024 / 1024).toFixed(2)} GiB`;
-  }
-
-  function progressPercent(progress: DownloadProgress) {
-    if (!progress.currentTotalBytes) return null;
-    return Math.min(
-      100,
-      Math.round(
-        (progress.currentDownloadedBytes / progress.currentTotalBytes) * 100,
-      ),
-    );
-  }
-
-  function stopReasonText(value: string) {
-    const reasons: Record<string, string> = {
-      target_reached: '已达到请求数量',
-      empty_page: '音源没有更多结果',
-      no_new_items: '后续页面没有新歌曲',
-      safety_limit: '已达到安全分页上限',
-      page_error: '后续页面请求失败',
-      first_page_error: '首个页面请求失败',
-    };
-    return reasons[value] ?? value;
-  }
 
   function resetResultState() {
     requestSerial += 1;
@@ -655,13 +508,31 @@
     <div class="mark" aria-hidden="true"><i></i><i></i><b></b></div>
     <div>
       <h1>音觅</h1>
-      <p>搜索音乐，把喜欢的声音带回本地</p>
+      <p>跨音源批量搜索与下载工作台</p>
     </div>
     <RuntimeTools />
     <span class="version">DESKTOP{appVersion ? ` · ${appVersion}` : ''}</span>
   </header>
 
-  <section class="search-panel" aria-label="搜索设置">
+  <div
+    class:active={searching || downloading}
+    class:downloading
+    class="signal-rail"
+    aria-hidden="true"
+  >
+    <span>{downloading ? 'TRANSFER' : searching ? 'SCANNING' : 'READY'}</span>
+    <i></i>
+    <b></b>
+  </div>
+
+  <div class="workspace">
+  <aside class="search-panel" aria-label="搜索与下载设置">
+    <header class="panel-heading">
+      <span>CONTROL DECK</span>
+      <h2>搜索与下载</h2>
+      <p>设置一次，然后从结果中挑选要带回本地的歌曲。</p>
+    </header>
+    <div class="section-label"><span>DISCOVERY</span><b>搜索设置</b></div>
     <form
       onsubmit={(event) => {
         event.preventDefault();
@@ -683,7 +554,7 @@
           bind:value={source}
           disabled={searching || downloading}
           onchange={searchSettingChanged}
-          >{#each sources as item (item[0])}<option value={item[0]}
+          >{#each SOURCES as item (item[0])}<option value={item[0]}
               >{item[1]}</option
             >{/each}</select
         ></label
@@ -693,7 +564,7 @@
           bind:value={mode}
           disabled={searching || downloading}
           onchange={searchSettingChanged}
-          >{#each modes as item (item[0])}<option value={item[0]}
+          >{#each SEARCH_MODES as item (item[0])}<option value={item[0]}
               >{item[1]}</option
             >{/each}</select
         ></label
@@ -716,9 +587,10 @@
         >{searching ? '正在搜索…' : '开始搜索'}</button
       >
     </form>
-    <p class="hint">
-      三种模式均返回歌曲列表。搜索数量范围 1–1000，默认使用网易云音乐。
-    </p>
+    <p class="hint">数量范围 1–1000，三种匹配方式均返回歌曲列表。</p>
+    <div class="section-label download-label"
+      ><span>OUTPUT</span><b>下载设置</b></div
+    >
     <div class="download-settings" aria-label="下载设置">
       <label class="quality-setting">
         <span>音质</span>
@@ -784,7 +656,7 @@
     >
       {directoryMessage || '每次下载会在此目录下按搜索关键词建立文件夹。'}
     </p>
-  </section>
+  </aside>
 
   <section
     class="results"
@@ -793,7 +665,7 @@
   >
     <div class="heading">
       <div>
-        <span>搜索结果</span>
+        <span>RESULT MONITOR</span>
         <h2>
           {result?.keyword ??
             (searching ? '正在连接音乐服务' : '从一个关键词开始')}
@@ -843,7 +715,7 @@
         <div class="partial-warning" role="status" aria-live="polite">
           <strong>已返回部分结果</strong>
           <span
-            >{stopReasonText(
+            >{stopReasonLabel(
               result.stopReason,
             )}，当前歌曲仍可正常选择和下载。</span
           >
@@ -879,7 +751,7 @@
                 ><td>{song.artistDisplay}</td><td class="source-name"
                   >{sourceLabel(song.source)}</td
                 ><td>{song.album ?? '—'}</td><td class="duration"
-                  >{duration(song.durationMs)}</td
+                  >{formatDuration(song.durationMs)}</td
                 >
                 <td
                   ><div class="badges">
@@ -955,9 +827,17 @@
         </table>
       </div>
     {:else}
-      <div class="radar" aria-hidden="true"><i></i><i></i><b></b></div>
+      <div class="empty-signal">
+        <div class="waveform" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i
+          ><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <strong>等待搜索信号</strong>
+        <span>输入关键词并选择音源，结果会显示在这里。</span>
+      </div>
     {/if}
   </section>
+  </div>
 
   <footer aria-label="下载队列">
     <div class="selected-summary">
@@ -971,16 +851,16 @@
             : `${retryingTarget ? '正在重试' : '正在下载'} · ${downloadProgress.currentName}`}</strong
         >
         <span>
-          {bytes(
+          {formatBytes(
             downloadProgress.currentDownloadedBytes,
           )}{downloadProgress.currentTotalBytes
-            ? ` / ${bytes(downloadProgress.currentTotalBytes)}`
+            ? ` / ${formatBytes(downloadProgress.currentTotalBytes)}`
             : ''}
           {downloadProgress.bytesPerSecond
-            ? ` · ${bytes(downloadProgress.bytesPerSecond)}/s`
+            ? ` · ${formatBytes(downloadProgress.bytesPerSecond)}/s`
             : ''}
-          {progressPercent(downloadProgress) !== null
-            ? ` · ${progressPercent(downloadProgress)}%`
+          {downloadProgressPercent(downloadProgress) !== null
+            ? ` · ${downloadProgressPercent(downloadProgress)}%`
             : ''}
           {rateLimitSeconds ? ` · 限流冷却约 ${rateLimitSeconds} 秒` : ''}
         </span>
@@ -1066,35 +946,46 @@
     overflow: hidden;
   }
   .shell {
+    --ink: #171b1a;
+    --ink-soft: #252b29;
+    --paper: #f1f3ef;
+    --panel: #e7eae4;
+    --line: #c7cec6;
+    --muted: #68746e;
+    --signal: #63dc91;
+    --signal-dark: #155d36;
+    --alert: #d75a4d;
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     height: 100vh;
-    padding-bottom: 96px;
-    background: #f6f9fc;
-    color: #16283e;
+    background: var(--paper);
+    color: var(--ink);
   }
   .topbar {
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 68px;
-    border-bottom: 1px solid #d3dee8;
-    background: #fff;
-    padding: 10px clamp(16px, 3vw, 40px);
+    min-height: 70px;
+    border-bottom: 1px solid #343a37;
+    background: var(--ink);
+    padding: 10px clamp(18px, 2.6vw, 36px);
+    color: #f7faf5;
   }
   .topbar h1 {
     margin: 0;
-    font-size: 1.45rem;
-    letter-spacing: 0.12em;
+    font-family: 'Bahnschrift SemiCondensed', 'Arial Narrow', sans-serif;
+    font-size: 1.55rem;
+    font-weight: 650;
+    letter-spacing: 0.16em;
   }
   .topbar p {
     margin: 2px 0 0;
-    color: #718091;
-    font-size: 0.78rem;
+    color: #9ea9a3;
+    font-size: 0.74rem;
   }
   .version {
     flex: 0 0 auto;
-    color: #8997a5;
+    color: #85918b;
     font:
       600 0.66rem ui-monospace,
       monospace;
@@ -1103,8 +994,9 @@
     position: relative;
     width: 44px;
     height: 44px;
-    border-radius: 13px;
-    background: #1478c9;
+    border: 1px solid #44504a;
+    border-radius: 5px;
+    background: #232a27;
   }
   .mark i,
   .mark b {
@@ -1112,7 +1004,7 @@
     border-radius: 50%;
   }
   .mark i {
-    border: 2px solid #ffffffb8;
+    border: 1px solid #a9b4ae;
   }
   .mark i:first-child {
     inset: 9px;
@@ -1125,20 +1017,109 @@
     top: 8px;
     width: 9px;
     height: 9px;
-    background: #4ac58b;
+    background: var(--signal);
+    box-shadow: 0 0 0 4px #63dc911c;
+  }
+  .signal-rail {
+    display: grid;
+    grid-template-columns: auto minmax(80px, 1fr) 8px;
+    align-items: center;
+    gap: 12px;
+    min-height: 22px;
+    background: #222725;
+    padding: 0 clamp(18px, 2.6vw, 36px);
+    color: #829087;
+    font: 650 0.58rem/1 'Cascadia Mono', ui-monospace, monospace;
+    letter-spacing: 0.14em;
+  }
+  .signal-rail i {
+    height: 1px;
+    background: #424b46;
+  }
+  .signal-rail b {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #5a665f;
+  }
+  .signal-rail.active {
+    color: var(--signal);
+  }
+  .signal-rail.active i {
+    background: linear-gradient(90deg, var(--signal) 0 34%, #424b46 34% 100%);
+    background-size: 180% 100%;
+    animation: signal-scan 1.4s linear infinite;
+  }
+  .signal-rail.active b {
+    background: var(--signal);
+    box-shadow: 0 0 10px #63dc91a6;
+  }
+  .signal-rail.downloading i {
+    background: var(--signal);
+    animation: none;
+  }
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(300px, 342px) minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
   }
   .search-panel {
-    border-bottom: 1px solid #c7d8e7;
-    background: #e7f0f8;
-    padding: 12px clamp(16px, 3vw, 40px) 10px;
+    min-height: 0;
+    overflow: auto;
+    border-right: 1px solid var(--line);
+    background: var(--panel);
+    padding: 20px 22px 24px;
+  }
+  .panel-heading {
+    margin-bottom: 22px;
+  }
+  .panel-heading span,
+  .section-label span,
+  .heading > div > span {
+    color: var(--muted);
+    font: 650 0.62rem/1 'Cascadia Mono', ui-monospace, monospace;
+    letter-spacing: 0.14em;
+  }
+  .panel-heading h2 {
+    margin: 5px 0 6px;
+    font-family: 'Bahnschrift SemiCondensed', 'Arial Narrow', sans-serif;
+    font-size: 1.45rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .panel-heading p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.55;
+  }
+  .section-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 7px;
+  }
+  .section-label b {
+    color: #354039;
+    font-size: 0.68rem;
+    font-weight: 650;
+  }
+  .section-label.download-label {
+    margin-top: 24px;
   }
   form {
     display: grid;
-    grid-template-columns:
-      minmax(200px, 1.8fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr)
-      76px auto;
+    grid-template-columns: minmax(0, 1fr) 82px;
     align-items: end;
-    gap: 9px;
+    gap: 11px 9px;
+  }
+  form .keyword,
+  form label:nth-of-type(2),
+  form label:nth-of-type(3) {
+    grid-column: 1 / -1;
   }
   label {
     display: grid;
@@ -1146,36 +1127,34 @@
   }
   form label > span,
   .quality-setting > span,
-  .directory-setting > span:first-child,
-  .heading > div > span {
-    color: #607487;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+  .directory-setting > span:first-child {
+    color: #56635c;
+    font-size: 0.67rem;
+    font-weight: 650;
+    letter-spacing: 0.05em;
   }
   input:not([type='checkbox']),
   select {
     width: 100%;
     height: 38px;
-    border: 1px solid #aabfd1;
-    border-radius: 5px;
+    border: 1px solid #aeb7ae;
+    border-radius: 3px;
     outline: none;
-    background: #fffffff0;
+    background: #fbfcfa;
     padding: 0 11px;
-    color: #16283e;
+    color: var(--ink);
     font: inherit;
   }
   input:focus,
   select:focus,
   button:focus-visible {
-    border-color: #1478c9;
-    box-shadow: 0 0 0 3px #1478c929;
+    border-color: #258752;
+    box-shadow: 0 0 0 3px #63dc9129;
   }
   button {
     cursor: pointer;
     border: 0;
-    border-radius: 5px;
+    border-radius: 3px;
     font: inherit;
     font-weight: 700;
   }
@@ -1185,36 +1164,42 @@
   }
   .primary {
     height: 38px;
-    background: #1478c9;
-    padding: 0 22px;
-    color: #fff;
+    background: var(--signal);
+    padding: 0 14px;
+    color: #122319;
+  }
+  .primary:hover:not(:disabled),
+  .download:hover:not(:disabled) {
+    background: #7ae6a2;
   }
   .hint {
     margin: 7px 0 0;
-    color: #6c7d8d;
-    font-size: 0.74rem;
+    color: var(--muted);
+    font-size: 0.68rem;
+    line-height: 1.5;
   }
   .download-settings {
     display: grid;
-    grid-template-columns: 135px 145px 145px minmax(260px, 1fr);
+    grid-template-columns: 1fr 1fr;
     align-items: end;
-    gap: 9px;
-    margin-top: 9px;
-    border-top: 1px solid #c7d8e7;
-    padding-top: 9px;
+    gap: 10px 8px;
   }
   .quality-setting,
   .directory-setting {
     min-width: 0;
+  }
+  .quality-setting,
+  .directory-setting {
+    grid-column: 1 / -1;
   }
   .toggle-setting {
     display: flex;
     align-items: center;
     gap: 9px;
     height: 38px;
-    border: 1px solid #b8cbd9;
-    border-radius: 5px;
-    background: #f8fbfdf0;
+    border: 1px solid #b6beb6;
+    border-radius: 3px;
+    background: #f7f9f5;
     padding: 0 10px;
     cursor: pointer;
   }
@@ -1223,11 +1208,11 @@
     flex: 0 0 auto;
     width: 15px;
     height: 15px;
-    accent-color: #1478c9;
+    accent-color: #258752;
   }
   .toggle-setting span {
     display: grid;
-    color: #385269;
+    color: #38443d;
     letter-spacing: 0;
     text-transform: none;
   }
@@ -1235,27 +1220,31 @@
     font-size: 0.72rem;
   }
   .toggle-setting small {
-    color: #7a8d9d;
+    color: var(--muted);
     font-size: 0.61rem;
   }
   .directory-control {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 6px;
   }
+  .directory-control button:last-child {
+    grid-column: 1 / -1;
+    min-height: 30px;
+  }
   .directory-control button {
-    border: 1px solid #aabfd1;
-    background: #fff;
+    border: 1px solid #aeb7ae;
+    background: #f9faf8;
     padding: 0 12px;
-    color: #315b7b;
+    color: #344a3c;
     font-size: 0.7rem;
     white-space: nowrap;
   }
   .directory-message {
     margin: 5px 0 0;
-    color: #708292;
+    color: var(--muted);
     font-size: 0.66rem;
-    text-align: right;
+    line-height: 1.45;
   }
   .directory-message.directory-error {
     color: #b23e37;
@@ -1265,18 +1254,22 @@
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
-    padding: 14px clamp(16px, 3vw, 40px) 0;
+    background: var(--paper);
+    padding: 20px clamp(18px, 2.4vw, 34px) 16px;
   }
   .heading {
     display: flex;
     flex: 0 0 auto;
     align-items: flex-end;
     justify-content: space-between;
-    margin-bottom: 10px;
+    margin-bottom: 14px;
   }
   .heading h2 {
-    margin: 3px 0 0;
-    font-size: 1.28rem;
+    margin: 5px 0 0;
+    font-family: 'Bahnschrift SemiCondensed', 'Arial Narrow', sans-serif;
+    font-size: 1.55rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
   }
   .count {
     display: flex;
@@ -1284,13 +1277,13 @@
     gap: 8px;
   }
   .count strong {
-    color: #1478c9;
+    color: #1b7c47;
     font:
       700 1.9rem/1 ui-monospace,
       monospace;
   }
   .count small {
-    color: #738292;
+    color: var(--muted);
   }
   .message {
     display: grid;
@@ -1299,18 +1292,18 @@
     gap: 8px;
     height: calc(100% - 70px);
     min-height: 220px;
-    border: 1px dashed #bdcad5;
-    color: #718091;
+    border: 1px dashed #b3bcb3;
+    color: var(--muted);
   }
   .message strong {
-    color: #263b50;
+    color: var(--ink);
   }
   .message.error {
-    border-color: #ddaeaa;
-    background: #fff7f6;
+    border-color: #d9a39d;
+    background: #fff6f4;
   }
   .message button {
-    background: #16283e;
+    background: var(--ink);
     padding: 8px 18px;
     color: #fff;
   }
@@ -1318,7 +1311,7 @@
     width: 13px;
     height: 13px;
     border-radius: 50%;
-    background: #1478c9;
+    background: var(--signal);
     animation: pulse 1.1s ease-in-out infinite;
   }
   .toolbar {
@@ -1327,16 +1320,16 @@
     align-items: center;
     justify-content: space-between;
     min-height: 39px;
-    border: 1px solid #d4dee7;
+    border: 1px solid var(--line);
     border-bottom: 0;
-    background: #fff;
+    background: #f8faf6;
     padding: 0 12px;
-    color: #718091;
+    color: var(--muted);
     font-size: 0.74rem;
   }
   .toolbar button {
     background: transparent;
-    color: #1478c9;
+    color: #166e3f;
   }
   .partial-warning {
     display: flex;
@@ -1359,8 +1352,8 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    border: 1px solid #d4dee7;
-    background: #fff;
+    border: 1px solid var(--line);
+    background: #fdfefc;
   }
   table {
     width: 100%;
@@ -1371,8 +1364,8 @@
   th {
     position: sticky;
     top: 0;
-    background: #edf3f8;
-    color: #66798a;
+    background: #dde2dc;
+    color: #536159;
     padding: 10px 12px;
     text-align: left;
     font-size: 0.68rem;
@@ -1380,27 +1373,27 @@
   td {
     max-width: 250px;
     overflow: hidden;
-    border-top: 1px solid #e6edf3;
+    border-top: 1px solid #e1e5df;
     padding: 10px 12px;
-    color: #566777;
+    color: #58635e;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   tr.selected td {
-    background: #f0f7fd;
+    background: #e8f5ec;
   }
   .index {
     color: #93a0ac;
   }
   .name {
-    color: #16283e;
+    color: var(--ink);
     font-weight: 700;
   }
   .duration {
     font-family: ui-monospace, monospace;
   }
   .source-name {
-    color: #3f7198;
+    color: #397250;
     font-size: 0.72rem;
   }
   .badges {
@@ -1409,9 +1402,9 @@
   }
   .badges span {
     border-radius: 3px;
-    background: #e9f2fa;
+    background: #e2eee5;
     padding: 3px 5px;
-    color: #386d96;
+    color: #356849;
     font-size: 0.62rem;
   }
   .badges .muted {
@@ -1432,7 +1425,7 @@
     overflow: visible;
   }
   .status.current {
-    color: #1478c9;
+    color: #15834a;
   }
   .status.waiting {
     color: #687d90;
@@ -1453,9 +1446,9 @@
     color: #a1abb4;
   }
   .retry-item {
-    background: #e6f1fa;
+    background: #e1eee5;
     padding: 3px 7px;
-    color: #176da9;
+    color: #17683d;
     font-size: 0.64rem;
   }
   .item-message {
@@ -1495,65 +1488,84 @@
   .warnings p:last-child {
     margin-bottom: 0;
   }
-  .radar {
-    position: relative;
-    width: 170px;
-    height: 170px;
-    margin: min(8vh, 60px) auto;
-    border: 1px solid #d2e0eb;
-    border-radius: 50%;
+  .empty-signal {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-height: 220px;
+    border: 1px solid var(--line);
+    background-color: #f7f9f5;
+    background-image:
+      linear-gradient(#dfe4de 1px, transparent 1px),
+      linear-gradient(90deg, #dfe4de 1px, transparent 1px);
+    background-size: 32px 32px;
+    color: var(--muted);
   }
-  .radar:before,
-  .radar:after,
-  .radar i,
-  .radar b {
-    content: '';
-    position: absolute;
-    border-radius: 50%;
+  .empty-signal strong {
+    color: #354039;
+    font-family: 'Bahnschrift SemiCondensed', 'Arial Narrow', sans-serif;
+    font-size: 1rem;
+    letter-spacing: 0.04em;
   }
-  .radar:before {
-    inset: 29px;
-    border: 1px solid #c8dae8;
+  .empty-signal > span {
+    font-size: 0.72rem;
   }
-  .radar:after {
-    inset: 60px;
-    border: 1px solid #bdd4e5;
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 72px;
+    margin-bottom: 7px;
+    border-inline: 1px solid #bec6be;
+    padding-inline: 18px;
   }
-  .radar i {
-    left: 50%;
-    top: 50%;
-    width: 1px;
-    height: 78px;
-    border-radius: 0;
-    background: #d3e0ea;
-    transform-origin: top;
+  .waveform i {
+    width: 3px;
+    height: 14px;
+    background: #6b7b72;
   }
-  .radar i:first-child {
-    transform: rotate(45deg);
+  .waveform i:nth-child(2),
+  .waveform i:nth-child(14) {
+    height: 22px;
   }
-  .radar i:nth-child(2) {
-    transform: rotate(135deg);
+  .waveform i:nth-child(3),
+  .waveform i:nth-child(6),
+  .waveform i:nth-child(11),
+  .waveform i:nth-child(13) {
+    height: 36px;
   }
-  .radar b {
-    right: 25px;
-    top: 35px;
-    width: 9px;
-    height: 9px;
-    background: #4ac58b;
+  .waveform i:nth-child(4),
+  .waveform i:nth-child(10) {
+    height: 54px;
+    background: #2c8a54;
+  }
+  .waveform i:nth-child(5),
+  .waveform i:nth-child(9) {
+    height: 28px;
+  }
+  .waveform i:nth-child(7) {
+    height: 62px;
+    background: var(--signal-dark);
+  }
+  .waveform i:nth-child(8) {
+    height: 44px;
+    background: #2c8a54;
+  }
+  .waveform i:nth-child(12) {
+    height: 18px;
   }
   footer {
-    position: fixed;
-    z-index: 10;
-    right: 0;
-    bottom: 0;
-    left: 0;
     display: flex;
     align-items: center;
     gap: 16px;
-    height: 96px;
+    min-height: 92px;
+    max-height: 116px;
     overflow-y: auto;
-    background: #16283e;
-    padding: 9px clamp(16px, 3vw, 40px);
+    border-top: 1px solid #39413d;
+    background: var(--ink);
+    padding: 10px clamp(18px, 2.6vw, 36px);
     color: #dbe6ef;
   }
   .selected-summary {
@@ -1596,7 +1608,7 @@
     height: 5px;
     margin-top: 4px;
     border: 0;
-    accent-color: #4ac58b;
+    accent-color: var(--signal);
   }
   .queue-stats {
     display: flex;
@@ -1640,7 +1652,7 @@
     color: #e6f0f7;
   }
   .download {
-    background: #4ac58b;
+    background: var(--signal);
     color: #102b20;
   }
   .retry-all {
@@ -1652,7 +1664,7 @@
     color: #f0f5f8;
   }
   .cancel.all {
-    background: #8f443f;
+    background: #914940;
     color: #fff;
   }
   @keyframes pulse {
@@ -1661,32 +1673,57 @@
       transform: scale(0.8);
     }
   }
+  @keyframes signal-scan {
+    to {
+      background-position: -180% 0;
+    }
+  }
+  @media (max-width: 1050px) and (min-width: 761px) {
+    .workspace {
+      grid-template-columns: 280px minmax(0, 1fr);
+    }
+    .search-panel {
+      padding-inline: 16px;
+    }
+    .panel-heading p {
+      display: none;
+    }
+    footer {
+      gap: 10px;
+    }
+    .selected-summary {
+      display: none;
+    }
+  }
   @media (max-width: 760px) {
+    :global(body) {
+      overflow: auto;
+    }
     .shell {
-      padding-bottom: 126px;
+      height: auto;
+      min-height: 100vh;
+      grid-template-rows: auto auto auto auto;
     }
-    form {
-      grid-template-columns: 1fr 1fr;
+    .workspace {
+      grid-template-columns: 1fr;
+      overflow: visible;
     }
-    .keyword {
-      grid-column: 1/-1;
-    }
-    .primary {
-      grid-column: 2;
-    }
-    .download-settings {
-      grid-template-columns: 1fr 1fr;
-    }
-    .directory-setting {
-      grid-column: 1/-1;
+    .search-panel {
+      overflow: visible;
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+      padding: 18px;
     }
     .results {
+      min-height: 560px;
       padding-inline: 12px;
     }
     footer {
-      align-items: stretch;
+      flex-wrap: wrap;
+      align-items: center;
       gap: 8px;
-      height: 126px;
+      min-height: 116px;
+      max-height: none;
       padding: 8px 12px;
     }
     .selected-summary {
@@ -1696,12 +1733,7 @@
       max-width: 360px;
     }
     .footer-actions {
-      flex-direction: column;
-      justify-content: center;
-    }
-    .footer-actions button {
-      width: 100%;
-      padding-block: 7px;
+      margin-left: auto;
     }
   }
   @media (max-width: 520px) {
@@ -1715,8 +1747,9 @@
     .download-settings {
       grid-template-columns: 1fr;
     }
+    .toggle-setting,
     .directory-setting {
-      grid-column: auto;
+      grid-column: 1 / -1;
     }
     .toolbar,
     .partial-warning {
@@ -1724,10 +1757,17 @@
       flex-direction: column;
       padding-block: 6px;
     }
+    .footer-actions {
+      width: 100%;
+    }
+    .footer-actions button {
+      flex: 1 1 auto;
+      padding-block: 8px;
+    }
   }
   @media (max-height: 560px) and (min-width: 761px) {
     .shell {
-      padding-bottom: 90px;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
     }
     .topbar {
       min-height: 54px;
@@ -1748,7 +1788,13 @@
       inset: 13px;
     }
     .search-panel {
-      padding-block: 7px 6px;
+      padding-block: 12px;
+    }
+    .panel-heading {
+      display: none;
+    }
+    .section-label.download-label {
+      margin-top: 12px;
     }
     form,
     label {
@@ -1792,12 +1838,14 @@
       padding-block: 7px;
     }
     footer {
-      height: 90px;
+      min-height: 82px;
+      max-height: 96px;
       padding-block: 6px;
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .pulse {
+    .pulse,
+    .signal-rail.active i {
       animation: none;
     }
   }

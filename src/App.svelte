@@ -138,18 +138,19 @@
     place-content: center;
     place-items: center;
     min-height: 100vh;
-    background: #f6f9fc;
-    color: #16283e;
+    background: #f1f3ef;
+    color: #171b1a;
   }
   main.splash h1 {
     margin: 16px 0 2px;
+    font-family: 'Bahnschrift SemiCondensed', 'Arial Narrow', sans-serif;
     font-size: 1.55rem;
     letter-spacing: 0.16em;
   }
   main.splash p {
     max-width: min(720px, 86vw);
     margin: 0;
-    color: #718091;
+    color: #68746e;
     font-size: 0.76rem;
     line-height: 1.6;
     overflow-wrap: anywhere;
@@ -167,21 +168,21 @@
     grid-template-columns: 12px 120px minmax(0, 1fr);
     align-items: center;
     gap: 9px;
-    border-top: 1px solid #e0e8ef;
+    border-top: 1px solid #d4d9d3;
     padding: 7px 3px;
-    color: #718091;
+    color: #68746e;
     font-size: 0.72rem;
     text-align: left;
   }
   .startup-stages i {
     width: 8px;
     height: 8px;
-    border: 2px solid #aebdca;
+    border: 2px solid #a9b2aa;
     border-radius: 50%;
   }
   .startup-stages li.done i {
-    border-color: #13785c;
-    background: #13785c;
+    border-color: #258752;
+    background: #258752;
   }
   .startup-stages li.error i {
     border-color: #b63f38;
@@ -189,7 +190,7 @@
   }
   .startup-stages small {
     overflow: hidden;
-    color: #8a98a5;
+    color: #7d8781;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -201,25 +202,26 @@
   .splash-actions button {
     cursor: pointer;
     border: 0;
-    border-radius: 5px;
-    background: #1478c9;
+    border-radius: 3px;
+    background: #63dc91;
     padding: 9px 15px;
-    color: #fff;
+    color: #122319;
     font:
       700 0.75rem/1 system-ui,
       sans-serif;
   }
   .splash-actions .quit {
-    background: #e5edf3;
-    color: #425d73;
+    background: #dfe4de;
+    color: #39453e;
   }
   .splash-mark {
     position: relative;
     width: 58px;
     height: 58px;
-    border-radius: 17px;
-    background: #1478c9;
-    box-shadow: 0 12px 30px #1478c92e;
+    border: 1px solid #3d4842;
+    border-radius: 6px;
+    background: #222725;
+    box-shadow: 0 12px 30px #171b1a24;
   }
   .splash-mark i,
   .splash-mark b {
@@ -227,7 +229,7 @@
     border-radius: 50%;
   }
   .splash-mark i {
-    border: 2px solid #ffffffb8;
+    border: 1px solid #a9b4ae;
     animation: splash-pulse 0.8s ease-out both;
   }
   .splash-mark i:first-child {
@@ -242,7 +244,8 @@
     top: 10px;
     width: 10px;
     height: 10px;
-    background: #4ac58b;
+    background: #63dc91;
+    box-shadow: 0 0 0 4px #63dc911c;
   }
   @keyframes splash-pulse {
     from {

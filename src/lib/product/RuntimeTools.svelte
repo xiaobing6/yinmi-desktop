@@ -367,12 +367,12 @@
   button {
     cursor: pointer;
     border: 0;
-    border-radius: 5px;
+    border-radius: 3px;
     font: inherit;
     font-weight: 700;
   }
   button:focus-visible {
-    outline: 3px solid #1478c938;
+    outline: 3px solid #63dc9142;
     outline-offset: 2px;
   }
   .logs-button,
@@ -384,32 +384,32 @@
     white-space: nowrap;
   }
   .logs-button {
-    border: 1px solid #c9d7e3;
-    background: #f4f8fb;
-    color: #31516d;
+    border: 1px solid #4d5a53;
+    background: #29302d;
+    color: #e1e7e2;
   }
   .update-action {
-    background: #1478c9;
-    color: #fff;
+    background: #63dc91;
+    color: #122319;
   }
   .quiet {
     background: transparent;
-    color: #718091;
+    color: #a0aca5;
   }
   .update-error {
-    background: #fff2f0;
-    color: #a7443f;
+    background: #5a302c;
+    color: #ffc2ba;
   }
   .update-status {
     overflow: hidden;
     max-width: 320px;
-    color: #607487;
+    color: #a0aca5;
     font-size: 0.72rem;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .update-status.ready {
-    color: #13785c;
+    color: #63dc91;
     font-weight: 700;
   }
   .log-drawer {

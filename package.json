@@ -1,7 +1,7 @@
 {
   "name": "yinmi",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "engines": {
@@ -12,7 +12,9 @@
     "dev": "vite",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "quality": "pnpm run check && pnpm run build && cargo check --manifest-path src-tauri/Cargo.toml",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -25,11 +27,9 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.2.0",
-    "@tailwindcss/vite": "4.3.2",
     "@tauri-apps/cli": "2.11.4",
     "@types/node": "24.13.3",
     "svelte-check": "4.7.2",
-    "tailwindcss": "4.3.2",
     "tslib": "2.8.1",
     "typescript": "6.0.3",
     "vite": "8.1.4"

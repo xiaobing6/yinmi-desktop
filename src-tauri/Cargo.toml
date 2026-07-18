@@ -1,6 +1,6 @@
 [package]
 name = "yinmi"
-version = "0.1.1"
+version = "0.1.2"
 description = "音觅桌面音乐搜索下载工具"
 edition = "2024"
 rust-version = "1.97"
@@ -48,3 +48,9 @@ objc2-web-kit = { version = "0.3", features = ["WKContentRuleList", "WKContentRu
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+strip = "symbols"

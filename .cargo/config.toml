@@ -1,0 +1,4 @@
+# Keep MSVC C/C++ dependencies buildable when Windows uses a non-UTF-8 code page.
+[env]
+CFLAGS_x86_64_pc_windows_msvc = { value = "/utf-8", force = false }
+CXXFLAGS_x86_64_pc_windows_msvc = { value = "/utf-8", force = false }

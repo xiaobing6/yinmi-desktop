@@ -1,9 +1,11 @@
-@import 'tailwindcss';
-
 :root {
-  font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif;
-  color: #16283e;
-  background: #f6f9fc;
+  font-family:
+    'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', system-ui,
+    sans-serif;
+  color: #171b1a;
+  background: #f1f3ef;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
 }
 
 body {

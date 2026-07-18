@@ -21,7 +21,7 @@ pub struct ResourcePolicyMetadata {
     pub strong_source_kinds_interface_available: bool,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", test))]
 pub(crate) const MACOS_POLICY_IDENTIFIER_PREFIX: &str = "yinmi-gd-signature-";
 
 #[cfg(any(target_os = "macos", test))]
@@ -449,4 +449,91 @@ pub(crate) fn classify_resource_request_for(
         None => false,
     };
     ResourceRequestDecision::Block { canary }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn mac_cleanup_latch_enforces_compile_cleanup_and_retry_order() {
+        let latch = MacCleanupLatch::default();
+        assert_eq!(latch.compile_state(), MacCompileState::NotStarted);
+        assert!(!latch.complete_compile(MacCompileState::Succeeded));
+        assert!(latch.mark_compile_started());
+        assert!(!latch.mark_compile_started());
+        assert!(!latch.complete_compile(MacCompileState::InFlight));
+        assert!(latch.complete_compile(MacCompileState::Succeeded));
+        assert!(!latch.cancel_before_compile());
+
+        latch.request_cleanup();
+        assert!(latch.claim_removal_start());
+        assert!(!latch.claim_removal_start());
+        for attempt in 0..MAX_MACOS_ABSENCE_ATTEMPTS {
+            assert!(latch.claim_verification_start());
+            if attempt + 1 < MAX_MACOS_ABSENCE_ATTEMPTS {
+                assert!(latch.retry_verification_after_callback());
+            }
+        }
+        assert!(!latch.retry_verification_after_callback());
+        assert!(latch.complete_cleanup(CleanupCompletion::VerifiedAbsent));
+        assert!(!latch.complete_cleanup(CleanupCompletion::Failed));
+        assert_eq!(
+            latch.cleanup_completion(),
+            CleanupCompletion::VerifiedAbsent
+        );
+
+        let failed = MacCleanupLatch::default();
+        assert!(failed.cancel_before_compile());
+        failed.request_cleanup();
+        assert!(!failed.claim_removal_start());
+        assert!(failed.claim_verification_start());
+        assert!(failed.complete_cleanup(CleanupCompletion::Failed));
+
+        let unknown = MacCleanupLatch::default();
+        assert!(unknown.mark_compile_started());
+        assert!(unknown.complete_compile(MacCompileState::UnknownAffinity));
+    }
+
+    #[test]
+    fn mac_policy_identity_owner_and_callback_gate_are_strict() {
+        let gate = StickyCallbackGate::default();
+        assert!(gate.claim());
+        assert!(!gate.claim());
+        assert!(gate.duplicate_faulted());
+
+        let identity = MacPolicyIdentity::new(7, 11);
+        assert_eq!(identity.identifier, "yinmi-gd-signature-7-11");
+        let latch = Arc::new(MacCleanupLatch::default());
+        assert!(latch.cancel_before_compile());
+        latch.request_cleanup();
+        assert!(latch.claim_verification_start());
+        assert!(latch.complete_cleanup(CleanupCompletion::VerifiedAbsent));
+
+        let mut owner = LateMacPolicyOwner::new(identity.clone(), Arc::clone(&latch));
+        assert!(!owner.acknowledge_verified_absence(
+            &MacPolicyIdentity::new(8, 11),
+            latch.as_ref(),
+        ));
+        assert!(owner.acknowledge_verified_absence(&identity, latch.as_ref()));
+        assert!(owner.acknowledged());
+        assert!(!owner.acknowledge_verified_absence(&identity, latch.as_ref()));
+
+        let returned = release_native_before_late_owner_return(String::from("native"), 42_u8);
+        assert_eq!(returned, 42);
+    }
+
+    #[test]
+    fn mac_content_rules_only_accept_controlled_origins() {
+        let gd = Url::parse("https://music.gdstudio.xyz/").expect("fixed URL is valid");
+        assert_eq!(macos_content_rules_for(&gd), Ok(MACOS_CONTENT_RULES.into()));
+
+        let loopback = Url::parse("https://127.0.0.1:43117/").expect("fixed URL is valid");
+        let rules = macos_content_rules_for(&loopback).expect("loopback origin is controlled");
+        assert!(rules.contains("127\\\\.0\\\\.0\\\\.1:43117"));
+
+        let invalid = Url::parse("http://127.0.0.1:43117/").expect("fixed URL is valid");
+        assert!(macos_content_rules_for(&invalid).is_err());
+    }
 }

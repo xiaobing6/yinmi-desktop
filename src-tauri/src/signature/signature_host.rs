@@ -2193,3 +2193,34 @@ pub(crate) fn final_exit_drop() {
         RAW_SIGNATURE_SLOT_ACTIVE.store(false, Ordering::Release);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn macos_final_exit_decision_requires_every_cleanup_signal() {
+        assert_eq!(
+            macos_final_exit_decision(true, true, true, true),
+            MacosFinalExitDecision {
+                retain_owner: false,
+                clear_active: true,
+            }
+        );
+        assert_eq!(
+            macos_final_exit_decision(true, false, true, true),
+            MacosFinalExitDecision {
+                retain_owner: true,
+                clear_active: false,
+            }
+        );
+        for blocked in [
+            macos_final_exit_decision(false, true, true, true),
+            macos_final_exit_decision(true, true, false, true),
+            macos_final_exit_decision(true, true, true, false),
+        ] {
+            assert!(!blocked.retain_owner);
+            assert!(!blocked.clear_active);
+        }
+    }
+}
