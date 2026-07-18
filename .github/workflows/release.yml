@@ -101,6 +101,8 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: release-windows-x64
+          key: ${{ github.sha }}
+          cache-workspace-crates: true
           save-if: false
 
       - run: pnpm install --frozen-lockfile
@@ -123,7 +125,7 @@ jobs:
           args: >-
             --target x86_64-pc-windows-msvc
             --bundles nsis
-            --config '{"bundle":{"createUpdaterArtifacts":true}}'
+            --config tauri.release.json
 
   macos:
     name: Build macOS universal
@@ -152,6 +154,8 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: release-macos-universal
+          key: ${{ github.sha }}
+          cache-workspace-crates: true
           save-if: false
 
       - run: pnpm install --frozen-lockfile
@@ -173,7 +177,7 @@ jobs:
           args: >-
             --target universal-apple-darwin
             --bundles app,dmg
-            --config '{"bundle":{"createUpdaterArtifacts":true,"macOS":{"signingIdentity":"-"}}}'
+            --config tauri.release.json
 
   publish:
     name: Validate updater manifest and publish

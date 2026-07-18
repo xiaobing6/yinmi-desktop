@@ -65,30 +65,24 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: release-macos-universal
+          key: ${{ github.sha }}
+          cache-workspace-crates: true
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
+      - if: github.event_name != 'push' || github.ref != 'refs/heads/master'
+        run: pnpm run build
       - name: Check macOS Rust with warnings denied
         if: github.event_name != 'push' || github.ref != 'refs/heads/master'
         run: >-
           cargo check
           --manifest-path src-tauri/Cargo.toml
           --target aarch64-apple-darwin
-      - name: Prebuild macOS ARM release target
+      - name: Prebuild macOS universal Tauri application
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: >-
-          cargo build
-          --release
-          --lib
-          --manifest-path src-tauri/Cargo.toml
-          --target aarch64-apple-darwin
-      - name: Prebuild macOS Intel release target
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        run: >-
-          cargo build
-          --release
-          --lib
-          --manifest-path src-tauri/Cargo.toml
-          --target x86_64-apple-darwin
+          pnpm tauri build
+          --no-bundle
+          --target universal-apple-darwin
+          --config tauri.release.json
 
   windows-release-cache:
     name: Prebuild Windows release target
@@ -113,11 +107,11 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: release-windows-x64
+          key: ${{ github.sha }}
+          cache-workspace-crates: true
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
       - run: >-
-          cargo build
-          --release
-          --lib
-          --manifest-path src-tauri/Cargo.toml
+          pnpm tauri build
+          --no-bundle
           --target x86_64-pc-windows-msvc
+          --config tauri.release.json
