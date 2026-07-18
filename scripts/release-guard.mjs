@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const EXPECTED_REPOSITORY = 'xiaobing6/yinmi-desktop';
 const PRODUCTION_ENDPOINT =
@@ -135,6 +136,7 @@ function validateManifest(options) {
   const repository = requireOption(options, 'repository');
   const manifestPath = requireOption(options, 'manifest');
   const releasePath = requireOption(options, 'release');
+  const assetDirectory = requireOption(options, 'asset-directory');
   validateRepository(repository);
 
   const expectedVersion = versionFromTag(tag);
@@ -165,13 +167,37 @@ function validateManifest(options) {
   }
 
   const windows = requirePlatform(manifest.platforms, 'windows-x86_64');
-  const universalSource = requirePlatform(
-    manifest.platforms,
-    'darwin-universal',
+  const universalArchive = release.assets.find(
+    (asset) =>
+      asset.name.endsWith('.app.tar.gz') &&
+      asset.name.toLowerCase().includes('universal'),
   );
 
-  // Tauri Action emits darwin-universal. The app uses the documented custom target
-  // macos-universal, so copy the already signed entry without changing its signature.
+  if (!universalArchive) {
+    fail('The universal macOS updater archive is missing.');
+  }
+  const universalSignatureAsset = release.assets.find(
+    (asset) => asset.name === `${universalArchive.name}.sig`,
+  );
+  if (!universalSignatureAsset) {
+    fail(`The detached signature asset ${universalArchive.name}.sig is missing.`);
+  }
+  const universalSignature = readFileSync(
+    join(assetDirectory, universalSignatureAsset.name),
+    'utf8',
+  ).trim();
+  if (!universalSignature) {
+    fail(`The detached signature ${universalSignatureAsset.name} is empty.`);
+  }
+
+  const universalSource = {
+    signature: universalSignature,
+    url: universalArchive.browser_download_url,
+  };
+  manifest.platforms['darwin-universal'] = universalSource;
+
+  // The app uses the documented custom target macos-universal, so copy the
+  // independently verified universal entry without changing its signature.
   manifest.platforms['macos-universal'] = {
     signature: universalSource.signature,
     url: universalSource.url,

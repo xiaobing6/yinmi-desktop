@@ -50,7 +50,7 @@ default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
 [profile.release]
-codegen-units = 1
-lto = "thin"
-opt-level = "s"
+codegen-units = 256
+lto = false
+opt-level = 1
 strip = "symbols"

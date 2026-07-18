@@ -23,14 +23,12 @@ env:
 
 jobs:
   prepare:
-    name: Validate release
+    name: Validate and prepare release
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-node@v6
         with:
@@ -53,6 +51,24 @@ jobs:
           --tag "$RELEASE_TAG"
           --repository "$GITHUB_REPOSITORY"
 
+      - name: Create or reuse draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            if [[ "$draft" != 'true' ]]; then
+              echo "Release $RELEASE_TAG already exists and is not a draft." >&2
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" \
+              --draft \
+              --generate-notes \
+              --title "音觅 ${RELEASE_TAG}" \
+              --notes '可直接下载安装；完整变更记录如下。'
+          fi
+
       - name: Export release tag
         id: release
         shell: bash
@@ -62,10 +78,10 @@ jobs:
     name: Build Windows x64 NSIS
     needs: prepare
     runs-on: windows-2025
+    env:
+      RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
         with:
@@ -84,10 +100,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          shared-key: release-windows-x64
+          save-if: false
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build signed Windows installer and create draft release
+      - name: Build and upload signed Windows installer
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -95,9 +113,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ needs.prepare.outputs.tag }}
-          releaseName: '音觅 v__VERSION__'
-          releaseBody: '可直接下载安装；完整变更记录如下。'
-          generateReleaseNotes: true
           releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: true
@@ -112,12 +127,12 @@ jobs:
 
   macos:
     name: Build macOS universal
-    needs: [prepare, windows]
+    needs: prepare
     runs-on: macos-15
+    env:
+      RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
         with:
@@ -136,6 +151,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          shared-key: release-macos-universal
+          save-if: false
 
       - run: pnpm install --frozen-lockfile
 
@@ -143,15 +160,13 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUSTFLAGS: -D warnings
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ needs.prepare.outputs.tag }}
-          releaseName: '音觅 v__VERSION__'
           releaseDraft: true
           prerelease: false
-          uploadUpdaterJson: true
+          uploadUpdaterJson: false
           uploadUpdaterSignatures: true
           retryAttempts: 2
           tauriScript: pnpm tauri
@@ -179,6 +194,7 @@ jobs:
         run: |
           mkdir -p release-finalize
           gh release download "$TAG" --pattern latest.json --dir release-finalize --clobber
+          gh release download "$TAG" --pattern '*universal.app.tar.gz.sig' --dir release-finalize --clobber
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > release-finalize/releases.json
 
       - name: Add macOS universal key and validate signed assets
@@ -188,6 +204,7 @@ jobs:
           --repository "$GITHUB_REPOSITORY"
           --manifest release-finalize/latest.json
           --release release-finalize/releases.json
+          --asset-directory release-finalize
 
       - name: Publish verified release
         shell: bash

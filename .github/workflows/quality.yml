@@ -2,8 +2,14 @@ name: quality
 
 on:
   push:
+    branches:
+      - '**'
   pull_request:
   merge_group:
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -40,6 +46,8 @@ jobs:
   macos-rust:
     name: macOS Rust warnings
     runs-on: macos-15
+    env:
+      RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -52,17 +60,64 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.0
-          targets: aarch64-apple-darwin
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          key: macos-aarch64-warnings
+          shared-key: release-macos-universal
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - name: Check macOS Rust with warnings denied
-        env:
-          RUSTFLAGS: -D warnings
+        if: github.event_name != 'push' || github.ref != 'refs/heads/master'
         run: >-
           cargo check
           --manifest-path src-tauri/Cargo.toml
           --target aarch64-apple-darwin
+      - name: Prebuild macOS ARM release target
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: >-
+          cargo build
+          --release
+          --lib
+          --manifest-path src-tauri/Cargo.toml
+          --target aarch64-apple-darwin
+      - name: Prebuild macOS Intel release target
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: >-
+          cargo build
+          --release
+          --lib
+          --manifest-path src-tauri/Cargo.toml
+          --target x86_64-apple-darwin
+
+  windows-release-cache:
+    name: Prebuild Windows release target
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: windows-2025
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: release-windows-x64
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: >-
+          cargo build
+          --release
+          --lib
+          --manifest-path src-tauri/Cargo.toml
+          --target x86_64-pc-windows-msvc
