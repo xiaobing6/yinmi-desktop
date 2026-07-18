@@ -31,7 +31,8 @@ use crate::music::{
         parse_audio_response, parse_lyric_response, parse_picture_response, render_form_body,
     },
     network_policy::{self, MediaGetError},
-    search::MusicCommandError,
+    rate_limiter::MusicRateLimiter,
+    search::{MusicCommandError, MusicSearchService, SearchResult},
     storage_space,
 };
 
@@ -43,6 +44,7 @@ const MAX_AUDIO_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const STALE_TEMP_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 const MIN_FREE_SPACE_BYTES: u64 = 512 * 1024 * 1024;
 const PROGRESS_EVENT: &str = "music-download-progress";
+const COMPLETE_EVENT: &str = "music-download-complete";
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "m4a", "aac", "ogg", "wav"];
 
 #[cfg(target_os = "windows")]
@@ -68,6 +70,17 @@ pub struct DownloadBatchRequest {
     pub keyword: String,
     pub source: GdSource,
     pub songs: Vec<ProbeSong>,
+    pub bitrate: u16,
+    pub embed_cover: bool,
+    pub download_lyrics: bool,
+    pub base_directory: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadStartRequest {
+    pub search_request_id: u64,
+    pub song_ids: Vec<String>,
     pub bitrate: u16,
     pub embed_cover: bool,
     pub download_lyrics: bool,
@@ -133,6 +146,37 @@ pub struct DownloadBatchResult {
     pub failed: usize,
     pub cancelled: usize,
     pub items: Vec<DownloadItemResult>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadStateSnapshot {
+    pub active: bool,
+    pub progress: Option<DownloadProgress>,
+    pub active_items: Vec<DownloadItemResult>,
+    pub last_result: Option<DownloadBatchResult>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExistingAudioScanRequest {
+    pub search_request_id: u64,
+    pub base_directory: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExistingAudioEntry {
+    pub song_id: String,
+    pub extensions: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExistingAudioScan {
+    pub search_request_id: u64,
+    pub directory: String,
+    pub items: Vec<ExistingAudioEntry>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -230,6 +274,8 @@ struct ActiveBatchControl {
     batch_id: u64,
     cancel_current: CancellationToken,
     cancel_all: bool,
+    progress: Option<DownloadProgress>,
+    items: Vec<DownloadItemResult>,
 }
 
 #[derive(Clone)]
@@ -248,6 +294,7 @@ struct BatchCounters {
 
 struct SongProgress<'a> {
     app: &'a AppHandle,
+    service: &'a MusicDownloadService,
     batch_id: u64,
     completed: usize,
     total: usize,
@@ -273,29 +320,29 @@ impl SongProgress<'_> {
         current_total_bytes: Option<u64>,
         bytes_per_second: u64,
     ) {
-        let _ = self.app.emit(
-            PROGRESS_EVENT,
-            DownloadProgress {
-                batch_id: self.batch_id,
-                completed: self.completed,
-                total: self.total,
-                current_song_id: self.current_song_id.to_owned(),
-                current_name: self.current_name.to_owned(),
-                succeeded: self.counters.succeeded,
-                skipped: self.counters.skipped,
-                failed: self.counters.failed,
-                cancelled: self.counters.cancelled,
-                state,
-                current_downloaded_bytes,
-                current_total_bytes,
-                bytes_per_second,
-            },
-        );
+        let snapshot = DownloadProgress {
+            batch_id: self.batch_id,
+            completed: self.completed,
+            total: self.total,
+            current_song_id: self.current_song_id.to_owned(),
+            current_name: self.current_name.to_owned(),
+            succeeded: self.counters.succeeded,
+            skipped: self.counters.skipped,
+            failed: self.counters.failed,
+            cancelled: self.counters.cancelled,
+            state,
+            current_downloaded_bytes,
+            current_total_bytes,
+            bytes_per_second,
+        };
+        self.service.store_progress(snapshot.clone());
+        let _ = self.app.emit(PROGRESS_EVENT, snapshot);
     }
 }
 
 pub struct MusicDownloadService {
     runtime: Arc<SignatureRuntime>,
+    limiter: Arc<MusicRateLimiter>,
     api_client: reqwest::Client,
     queue: tokio::sync::Mutex<()>,
     next_batch_id: AtomicU64,
@@ -303,10 +350,15 @@ pub struct MusicDownloadService {
     last_directory: Mutex<Option<PathBuf>>,
     active_batch: Mutex<Option<ActiveBatchControl>>,
     last_retry: Mutex<Option<RetrySnapshot>>,
+    last_result: Mutex<Option<DownloadBatchResult>>,
+    dedupe_scan: Mutex<Option<ExistingAudioScan>>,
 }
 
 impl MusicDownloadService {
-    pub fn new(runtime: Arc<SignatureRuntime>) -> Result<Self, MusicCommandError> {
+    pub(crate) fn new(
+        runtime: Arc<SignatureRuntime>,
+        limiter: Arc<MusicRateLimiter>,
+    ) -> Result<Self, MusicCommandError> {
         let api_client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .no_proxy()
@@ -317,6 +369,7 @@ impl MusicDownloadService {
             .map_err(|_| MusicCommandError::new("MUSIC_HTTP", "无法连接音乐服务"))?;
         Ok(Self {
             runtime,
+            limiter,
             api_client,
             queue: tokio::sync::Mutex::new(()),
             next_batch_id: AtomicU64::new(0),
@@ -324,6 +377,8 @@ impl MusicDownloadService {
             last_directory: Mutex::new(None),
             active_batch: Mutex::new(None),
             last_retry: Mutex::new(None),
+            last_result: Mutex::new(None),
+            dedupe_scan: Mutex::new(None),
         })
     }
 
@@ -382,7 +437,13 @@ impl MusicDownloadService {
             batch_id,
             cancel_current: first_cancel.clone(),
             cancel_all: false,
+            progress: None,
+            items: Vec::new(),
         });
+        *self
+            .last_result
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
 
         for (index, song) in request.songs.into_iter().enumerate() {
             log::info!(
@@ -405,6 +466,7 @@ impl MusicDownloadService {
             };
             let progress = SongProgress {
                 app,
+                service: self,
                 batch_id,
                 completed: index,
                 total,
@@ -501,6 +563,7 @@ impl MusicDownloadService {
                 }
             };
             items.push(item);
+            self.store_item_result(batch_id, items[index].clone());
             log::info!(
                 "下载项目结束 batch_id={} song_id={} state={:?}",
                 batch_id,
@@ -509,6 +572,7 @@ impl MusicDownloadService {
             );
             SongProgress {
                 app,
+                service: self,
                 batch_id,
                 completed: index + 1,
                 total,
@@ -529,8 +593,6 @@ impl MusicDownloadService {
             );
         }
 
-        self.finish_batch(batch_id);
-
         let retryable_ids = items
             .iter()
             .filter(|item| {
@@ -549,7 +611,7 @@ impl MusicDownloadService {
             retryable_ids,
         });
 
-        Ok(DownloadBatchResult {
+        let result = DownloadBatchResult {
             batch_id,
             directory: directory.to_string_lossy().into_owned(),
             total,
@@ -558,7 +620,14 @@ impl MusicDownloadService {
             failed,
             cancelled,
             items,
-        })
+        };
+        *self
+            .last_result
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(result.clone());
+        self.finish_batch(batch_id);
+        let _ = app.emit(COMPLETE_EVENT, result.clone());
+        Ok(result)
     }
 
     async fn retry_failed(
@@ -645,12 +714,6 @@ impl MusicDownloadService {
             return Err(DownloadFailure::Cancelled);
         }
         let file_stem = song_file_stem(song);
-        if let Some(path) = find_existing_audio(directory, &file_stem).await {
-            return Ok(DownloadedFile::Skipped {
-                path,
-                warnings: Vec::new(),
-            });
-        }
         let resource_id = song.url_id.as_deref().unwrap_or(&song.id);
         if resource_id.trim().is_empty() {
             return Err(MusicCommandError::new(
@@ -660,41 +723,14 @@ impl MusicDownloadService {
             .into());
         }
 
-        tokio::select! {
-            _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
-            result = self.runtime.ensure_initialized() => result
-                .map_err(|_| MusicCommandError::new("MUSIC_SIGNATURE", "签名页面初始化或签名失败"))?,
-        }
         let operation = GdOperation::Url {
             id: EncodedComponent::encode(resource_id),
             source,
             bitrate,
         };
-        let signature = tokio::select! {
-            _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
-            result = self.runtime.sign(operation.signature_input()) => result
-                .map_err(|_| MusicCommandError::new("MUSIC_SIGNATURE", "获取音频地址时签名失败"))?,
-        };
-        let response = tokio::select! {
-            _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
-            result = self
-                .api_client
-                .post(GD_API_URL)
-                .header(
-                    reqwest::header::CONTENT_TYPE,
-                    "application/x-www-form-urlencoded",
-                )
-                .body(render_form_body(&operation, &signature))
-                .send() => result.map_err(|_| MusicCommandError::new("MUSIC_HTTP", "获取音频地址失败"))?,
-        };
-        if !response.status().is_success() {
-            return Err(MusicCommandError::new(
-                "MUSIC_HTTP",
-                format!("音乐服务返回 HTTP {}", response.status().as_u16()),
-            )
-            .into());
-        }
-        let body = read_limited(response, MAX_API_RESPONSE_BYTES, cancel).await?;
+        let body = self
+            .request_gd_resource(operation, cancel, "获取音频地址")
+            .await?;
         let location = match parse_audio_response(&body, u32::from(bitrate))
             .map_err(|_| MusicCommandError::new("MUSIC_SCHEMA", "音频地址格式不兼容"))?
         {
@@ -815,6 +851,15 @@ impl MusicDownloadService {
                 return Err(error.into());
             }
         };
+        let final_path = directory.join(format!("{file_stem}.{extension}"));
+        if let Some(path) = find_existing_audio(directory, &file_stem, extension).await {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            self.record_existing(directory, &song.id, extension);
+            return Ok(DownloadedFile::Skipped {
+                path,
+                warnings: Vec::new(),
+            });
+        }
         let mut warnings = Vec::new();
         if embed_cover {
             if matches!(extension, "mp3" | "flac") {
@@ -844,8 +889,6 @@ impl MusicDownloadService {
                 warnings.push(format!("{extension} 格式暂不支持写入封面"));
             }
         }
-        let final_path = directory.join(format!("{file_stem}.{extension}"));
-
         if cancel.is_cancelled() {
             let _ = tokio::fs::remove_file(&temp_path).await;
             return Err(DownloadFailure::Cancelled);
@@ -854,6 +897,7 @@ impl MusicDownloadService {
         match commit_no_replace(&temp_path, &final_path).await {
             Ok(NoReplaceCommit::Committed) => {
                 let _ = tokio::fs::remove_file(&temp_path).await;
+                self.record_existing(directory, &song.id, extension);
                 if download_lyrics {
                     match song.lyric_id.as_deref().filter(|id| !id.trim().is_empty()) {
                         Some(lyric_id) => {
@@ -884,6 +928,7 @@ impl MusicDownloadService {
             }
             Ok(NoReplaceCommit::AlreadyExists) => {
                 let _ = tokio::fs::remove_file(&temp_path).await;
+                self.record_existing(directory, &song.id, extension);
                 Ok(DownloadedFile::Skipped {
                     path: final_path,
                     warnings,
@@ -905,36 +950,53 @@ impl MusicDownloadService {
         cancel: &CancellationToken,
         action: &'static str,
     ) -> Result<Vec<u8>, DownloadFailure> {
-        tokio::select! {
-            _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
-            result = self.runtime.ensure_initialized() => result
-                .map_err(|_| MusicCommandError::new("MUSIC_SIGNATURE", format!("{action}时签名页面初始化失败")))?,
-        }
-        let signature = tokio::select! {
-            _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
-            result = self.runtime.sign(operation.signature_input()) => result
-                .map_err(|_| MusicCommandError::new("MUSIC_SIGNATURE", format!("{action}时签名失败")))?,
-        };
-        let response = tokio::select! {
-            _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
-            result = self
-                .api_client
-                .post(GD_API_URL)
-                .header(
-                    reqwest::header::CONTENT_TYPE,
-                    "application/x-www-form-urlencoded",
+        for attempt in 0..3 {
+            self.limiter
+                .acquire(Some(cancel))
+                .await
+                .map_err(|_| DownloadFailure::Cancelled)?;
+            tokio::select! {
+                _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
+                result = self.runtime.ensure_initialized() => result
+                    .map_err(|_| MusicCommandError::new("MUSIC_SIGNATURE", format!("{action}时签名页面初始化失败")))?,
+            }
+            let signature = tokio::select! {
+                _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
+                result = self.runtime.sign(operation.signature_input()) => result
+                    .map_err(|_| MusicCommandError::new("MUSIC_SIGNATURE", format!("{action}时签名失败")))?,
+            };
+            let response = tokio::select! {
+                _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
+                result = self
+                    .api_client
+                    .post(GD_API_URL)
+                    .header(
+                        reqwest::header::CONTENT_TYPE,
+                        "application/x-www-form-urlencoded",
+                    )
+                    .body(render_form_body(&operation, &signature))
+                    .send() => result.map_err(|_| MusicCommandError::new("MUSIC_HTTP", format!("{action}失败")))?,
+            };
+            if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let retry_after = response
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok());
+                self.limiter.observe_too_many_requests(retry_after);
+                if attempt < 2 {
+                    continue;
+                }
+            }
+            if !response.status().is_success() {
+                return Err(MusicCommandError::new(
+                    "MUSIC_HTTP",
+                    format!("{action}返回 HTTP {}", response.status().as_u16()),
                 )
-                .body(render_form_body(&operation, &signature))
-                .send() => result.map_err(|_| MusicCommandError::new("MUSIC_HTTP", format!("{action}失败")))?,
-        };
-        if !response.status().is_success() {
-            return Err(MusicCommandError::new(
-                "MUSIC_HTTP",
-                format!("{action}返回 HTTP {}", response.status().as_u16()),
-            )
-            .into());
+                .into());
+            }
+            return read_limited(response, MAX_API_RESPONSE_BYTES, cancel).await;
         }
-        read_limited(response, MAX_API_RESPONSE_BYTES, cancel).await
+        unreachable!("three rate-limited attempts must return")
     }
 
     async fn fetch_and_embed_cover(
@@ -1128,6 +1190,140 @@ impl MusicDownloadService {
         Err(MusicCommandError::new("FS_PATH", "无法分配音频临时文件"))
     }
 
+    fn store_progress(&self, progress: DownloadProgress) {
+        let mut active = self
+            .active_batch
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(control) = active
+            .as_mut()
+            .filter(|control| control.batch_id == progress.batch_id)
+        {
+            control.progress = Some(progress);
+        }
+    }
+
+    fn store_item_result(&self, batch_id: u64, item: DownloadItemResult) {
+        let mut active = self
+            .active_batch
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(control) = active
+            .as_mut()
+            .filter(|control| control.batch_id == batch_id)
+        {
+            control.items.push(item);
+        }
+    }
+
+    pub(crate) fn snapshot(&self) -> DownloadStateSnapshot {
+        let active = self
+            .active_batch
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let progress = active.as_ref().and_then(|control| control.progress.clone());
+        let active_items = active
+            .as_ref()
+            .map(|control| control.items.clone())
+            .unwrap_or_default();
+        let is_active = active.is_some();
+        drop(active);
+        let last_result = self
+            .last_result
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        DownloadStateSnapshot {
+            active: is_active,
+            progress,
+            active_items,
+            last_result,
+        }
+    }
+
+    async fn scan_existing(
+        &self,
+        app: &AppHandle,
+        search: &SearchResult,
+        base_directory: &str,
+    ) -> Result<ExistingAudioScan, MusicCommandError> {
+        let base = resolve_base_directory(app, base_directory).await?;
+        let directory = base.join(sanitize_segment(&search.keyword, 120, "音乐下载"));
+        let mut file_names = HashSet::new();
+        match tokio::fs::read_dir(&directory).await {
+            Ok(mut entries) => {
+                while let Some(entry) = entries
+                    .next_entry()
+                    .await
+                    .map_err(|_| MusicCommandError::new("FS_PATH", "无法扫描下载目录"))?
+                {
+                    if entry
+                        .file_type()
+                        .await
+                        .map(|kind| kind.is_file())
+                        .unwrap_or(false)
+                        && let Some(name) = entry.file_name().to_str()
+                    {
+                        file_names.insert(name.to_owned());
+                    }
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(_) => return Err(MusicCommandError::new("FS_PATH", "无法扫描下载目录")),
+        }
+
+        let items = search
+            .songs
+            .iter()
+            .filter_map(|song| {
+                let stem = song_file_stem(song);
+                let extensions = AUDIO_EXTENSIONS
+                    .iter()
+                    .filter(|extension| file_names.contains(&format!("{stem}.{extension}")))
+                    .map(|extension| (*extension).to_owned())
+                    .collect::<Vec<_>>();
+                (!extensions.is_empty()).then(|| ExistingAudioEntry {
+                    song_id: song.id.clone(),
+                    extensions,
+                })
+            })
+            .collect();
+        let scan = ExistingAudioScan {
+            search_request_id: search.request_id,
+            directory: directory.to_string_lossy().into_owned(),
+            items,
+        };
+        *self
+            .dedupe_scan
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(scan.clone());
+        Ok(scan)
+    }
+
+    fn record_existing(&self, directory: &Path, song_id: &str, extension: &str) {
+        let directory = directory.to_string_lossy();
+        let mut scan = self
+            .dedupe_scan
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(scan) = scan
+            .as_mut()
+            .filter(|scan| scan.directory == directory.as_ref())
+        else {
+            return;
+        };
+        if let Some(item) = scan.items.iter_mut().find(|item| item.song_id == song_id) {
+            if !item.extensions.iter().any(|value| value == extension) {
+                item.extensions.push(extension.to_owned());
+            }
+        } else {
+            scan.items.push(ExistingAudioEntry {
+                song_id: song_id.to_owned(),
+                extensions: vec![extension.to_owned()],
+            });
+        }
+    }
+
     fn next_song_token(&self, batch_id: u64) -> CancellationToken {
         let token = CancellationToken::new();
         let mut active = self
@@ -1223,14 +1419,9 @@ fn song_file_stem(song: &ProbeSong) -> String {
     format!("【{id}】{name}")
 }
 
-async fn find_existing_audio(directory: &Path, stem: &str) -> Option<PathBuf> {
-    for extension in AUDIO_EXTENSIONS {
-        let path = directory.join(format!("{stem}.{extension}"));
-        if tokio::fs::symlink_metadata(&path).await.is_ok() {
-            return Some(path);
-        }
-    }
-    None
+async fn find_existing_audio(directory: &Path, stem: &str, extension: &str) -> Option<PathBuf> {
+    let path = directory.join(format!("{stem}.{extension}"));
+    tokio::fs::symlink_metadata(&path).await.ok().map(|_| path)
 }
 
 async fn restore_audio_backup(audio_path: &Path, backup_path: &Path) -> io::Result<()> {
@@ -1557,10 +1748,16 @@ fn detect_extension(
     if first.starts_with(b"fLaC") {
         return Some("flac");
     }
+    if first
+        .get(..2)
+        .is_some_and(|bytes| bytes[0] == 0xff && bytes[1] & 0xf6 == 0xf0)
+    {
+        return Some("aac");
+    }
     if first.starts_with(b"ID3")
-        || first
-            .get(..2)
-            .is_some_and(|bytes| bytes[0] == 0xff && bytes[1] & 0xe0 == 0xe0)
+        || first.get(..2).is_some_and(|bytes| {
+            bytes[0] == 0xff && bytes[1] & 0xe0 == 0xe0 && bytes[1] & 0x06 != 0
+        })
     {
         return Some("mp3");
     }
@@ -1627,8 +1824,20 @@ fn open_directory(directory: &Path) -> Result<(), MusicCommandError> {
 pub async fn music_download_batch(
     app: AppHandle,
     service: State<'_, Arc<MusicDownloadService>>,
-    request: DownloadBatchRequest,
+    search: State<'_, Arc<MusicSearchService>>,
+    request: DownloadStartRequest,
 ) -> Result<DownloadBatchResult, MusicCommandError> {
+    let (keyword, source, songs) =
+        search.resolve_download_selection(request.search_request_id, &request.song_ids)?;
+    let request = DownloadBatchRequest {
+        keyword,
+        source,
+        songs,
+        bitrate: request.bitrate,
+        embed_cover: request.embed_cover,
+        download_lyrics: request.download_lyrics,
+        base_directory: request.base_directory,
+    };
     log::info!(
         "下载批次开始 source={} total={} bitrate={} cover={} lyric={}",
         request.source.wire_value(),
@@ -1697,4 +1906,77 @@ pub fn music_open_download_directory(
     service: State<'_, Arc<MusicDownloadService>>,
 ) -> Result<(), MusicCommandError> {
     service.open_last_directory()
+}
+
+#[tauri::command]
+pub fn music_get_download_snapshot(
+    service: State<'_, Arc<MusicDownloadService>>,
+) -> DownloadStateSnapshot {
+    service.snapshot()
+}
+
+#[tauri::command]
+pub async fn music_scan_existing(
+    app: AppHandle,
+    service: State<'_, Arc<MusicDownloadService>>,
+    search: State<'_, Arc<MusicSearchService>>,
+    request: ExistingAudioScanRequest,
+) -> Result<ExistingAudioScan, MusicCommandError> {
+    let snapshot = search.snapshot().result.ok_or_else(|| {
+        MusicCommandError::new("MUSIC_SEARCH_STALE", "搜索结果已失效，请重新搜索")
+    })?;
+    if snapshot.request_id != request.search_request_id {
+        return Err(MusicCommandError::new(
+            "MUSIC_SEARCH_STALE",
+            "搜索结果已变化，请重新扫描",
+        ));
+    }
+    service
+        .scan_existing(&app, &snapshot, &request.base_directory)
+        .await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{detect_extension, find_existing_audio};
+
+    #[test]
+    fn distinguishes_adts_aac_from_mpeg_audio() {
+        assert_eq!(
+            detect_extension(&[0xff, 0xf1, 0x50, 0x80], None, None),
+            Some("aac")
+        );
+        assert_eq!(
+            detect_extension(&[0xff, 0xfb, 0x90, 0x64], None, None),
+            Some("mp3")
+        );
+    }
+
+    #[tokio::test]
+    async fn existing_mp3_does_not_block_flac() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("yinmi-dedupe-{unique}"));
+        tokio::fs::create_dir_all(&directory).await.unwrap();
+        tokio::fs::write(directory.join("song.mp3"), b"existing")
+            .await
+            .unwrap();
+
+        assert!(
+            find_existing_audio(&directory, "song", "flac")
+                .await
+                .is_none()
+        );
+        assert!(
+            find_existing_audio(&directory, "song", "mp3")
+                .await
+                .is_some()
+        );
+
+        tokio::fs::remove_dir_all(directory).await.unwrap();
+    }
 }

@@ -6,6 +6,7 @@ commands.allow = [
   "app_open_log_directory",
   "app_cancel_exit",
   "app_set_update_active",
+  "app_get_activity_status",
   "app_confirm_exit",
   "app_prepare_restart"
 ]

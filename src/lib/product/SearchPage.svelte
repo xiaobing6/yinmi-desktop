@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
+  import { getVersion } from '@tauri-apps/api/app';
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
   import { onMount } from 'svelte';
   import RuntimeTools from './RuntimeTools.svelte';
@@ -34,14 +35,25 @@
     hasHires: boolean;
   }
   interface SearchResult {
+    requestId: number;
     keyword: string;
     source: SourceCode;
     sourceName: string;
+    mode: SearchMode;
+    requestedCount: number;
     returnedCount: number;
     skippedRecords: number;
     incomplete: boolean;
     stopReason: string;
     songs: Song[];
+  }
+  interface SearchStateSnapshot {
+    active: boolean;
+    result: SearchResult | null;
+  }
+  interface SearchCompleteEvent {
+    result: SearchResult | null;
+    error: { code: string; message: string } | null;
   }
   interface DownloadProgress {
     batchId: number;
@@ -78,6 +90,20 @@
     cancelled: number;
     items: DownloadItemResult[];
   }
+  interface DownloadStateSnapshot {
+    active: boolean;
+    progress: DownloadProgress | null;
+    activeItems: DownloadItemResult[];
+    lastResult: DownloadBatchResult | null;
+  }
+  interface ExistingAudioScan {
+    searchRequestId: number;
+    directory: string;
+    items: Array<{ songId: string; extensions: string[] }>;
+  }
+  interface RateLimitNotice {
+    waitSeconds: number;
+  }
 
   const sources: Array<[SourceCode, string]> = [
     ['netease_music', '网易云音乐'],
@@ -106,6 +132,10 @@
   let errorMessage = '';
   let selected = new Set<string>();
   let requestSerial = 0;
+  let renderedSongCount = 150;
+  let existingAudio = new Map<string, string[]>();
+  let rateLimitSeconds = 0;
+  let appVersion = '';
 
   let bitrate = 320;
   let embedCover = true;
@@ -125,12 +155,16 @@
 
   onMount(() => {
     let disposed = false;
-    let unlisten: (() => void) | undefined;
+    const detach: Array<() => void> = [];
+    void getVersion().then((value) => {
+      if (!disposed) appVersion = value;
+    });
     void invoke<string>('music_get_default_directory')
       .then((directory) => {
         if (disposed) return;
         defaultDirectory = directory;
         if (!baseDirectory.trim()) baseDirectory = directory;
+        void scanExisting();
       })
       .catch((error) => {
         if (!disposed)
@@ -140,19 +174,129 @@
         if (!disposed) directoryLoading = false;
       });
     void listen<DownloadProgress>('music-download-progress', (event) => {
-      if (downloading) {
-        downloadProgress = event.payload;
-        if (event.payload.state === 'finished') cancellingScope = null;
+      downloading = true;
+      downloadProgress = event.payload;
+      if (event.payload.state === 'finished') cancellingScope = null;
+    }).then((stop) => {
+      if (disposed) stop();
+      else detach.push(stop);
+    });
+    void listen<DownloadBatchResult>('music-download-complete', (event) => {
+      mergeDownloadResult(event.payload);
+      downloading = false;
+      cancellingScope = null;
+      retryingTarget = null;
+      void scanExisting();
+    }).then((stop) => {
+      if (disposed) stop();
+      else detach.push(stop);
+    });
+    void listen<RateLimitNotice>('music-rate-limit', (event) => {
+      rateLimitSeconds = event.payload.waitSeconds;
+    }).then((stop) => {
+      if (disposed) stop();
+      else detach.push(stop);
+    });
+    void listen<SearchCompleteEvent>('music-search-complete', (event) => {
+      searching = false;
+      if (event.payload.result) {
+        errorMessage = '';
+        applySearchSnapshot(event.payload.result);
+      } else if (event.payload.error) {
+        errorMessage = event.payload.error.message;
       }
     }).then((stop) => {
       if (disposed) stop();
-      else unlisten = stop;
+      else detach.push(stop);
     });
+    void invoke<SearchStateSnapshot>('music_get_search_snapshot').then(
+      (snapshot) => {
+        if (disposed) return;
+        if (snapshot.active) searching = true;
+        if (snapshot.result && !result) {
+          applySearchSnapshot(snapshot.result, true);
+        }
+      },
+    );
+    void invoke<DownloadStateSnapshot>('music_get_download_snapshot').then(
+      (snapshot) => {
+        if (!disposed) applyDownloadSnapshot(snapshot);
+      },
+    );
     return () => {
       disposed = true;
-      unlisten?.();
+      for (const stop of detach) stop();
     };
   });
+
+  function applySearchSnapshot(value: SearchResult, restoreForm = false) {
+    result = value;
+    renderedSongCount = Math.min(150, value.songs.length);
+    existingAudio = new Map();
+    if (restoreForm) {
+      keyword = value.keyword;
+      source = value.source;
+      mode = value.mode;
+      count = value.requestedCount;
+    }
+    void scanExisting();
+  }
+
+  function applyDownloadSnapshot(snapshot: DownloadStateSnapshot) {
+    if (snapshot.lastResult) {
+      downloadItems = new Map();
+      mergeDownloadResult(snapshot.lastResult);
+    }
+    if (snapshot.active && snapshot.progress) {
+      downloadItems = new Map(
+        snapshot.activeItems.map((item) => [item.songId, item]),
+      );
+      downloading = true;
+      downloadProgress = snapshot.progress;
+    } else if (!snapshot.active) {
+      downloading = false;
+    }
+  }
+
+  async function scanExisting() {
+    const current = result;
+    const directory = baseDirectory.trim() || defaultDirectory;
+    if (!current || !directory) return;
+    try {
+      const scan = await invoke<ExistingAudioScan>('music_scan_existing', {
+        request: {
+          searchRequestId: current.requestId,
+          baseDirectory: directory,
+        },
+      });
+      if (result?.requestId === scan.searchRequestId) {
+        existingAudio = new Map(
+          scan.items.map((item) => [item.songId, item.extensions]),
+        );
+        directoryMessage = '';
+      }
+    } catch (error) {
+      if (result?.requestId === current.requestId) {
+        directoryMessage = `无法扫描已有文件：${errorText(error)}`;
+      }
+    }
+  }
+
+  function handleTableScroll(event: Event) {
+    const viewport = event.currentTarget as HTMLElement;
+    if (
+      result &&
+      renderedSongCount < result.songs.length &&
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 240
+    ) {
+      renderedSongCount = Math.min(
+        result.songs.length,
+        renderedSongCount + 150,
+      );
+    }
+  }
+
+  const renderedSongs = () => result?.songs.slice(0, renderedSongCount) ?? [];
 
   const keyOf = (song: Song) => `${song.source}:${song.id}`;
   const downloadableSongs = () =>
@@ -161,7 +305,16 @@
     downloadableSongs().filter((song) => selected.has(keyOf(song)));
 
   function sourceLabel(code: string) {
-    return sources.find(([value]) => value === code)?.[1] ?? code;
+    const aliases: Record<string, SourceCode> = {
+      netease: 'netease_music',
+      tencent: 'qq_music',
+      kuwo: 'kuwo_music',
+      bilibili: 'bilibili_music',
+      apple: 'apple_music',
+      ytmusic: 'youtube_music',
+    };
+    const internal = aliases[code] ?? code;
+    return sources.find(([value]) => value === internal)?.[1] ?? code;
   }
 
   function errorText(error: unknown) {
@@ -182,6 +335,16 @@
     if (value < 1024 * 1024 * 1024)
       return `${(value / 1024 / 1024).toFixed(1)} MiB`;
     return `${(value / 1024 / 1024 / 1024).toFixed(2)} GiB`;
+  }
+
+  function progressPercent(progress: DownloadProgress) {
+    if (!progress.currentTotalBytes) return null;
+    return Math.min(
+      100,
+      Math.round(
+        (progress.currentDownloadedBytes / progress.currentTotalBytes) * 100,
+      ),
+    );
   }
 
   function stopReasonText(value: string) {
@@ -205,6 +368,8 @@
     downloadProgress = null;
     downloadError = '';
     downloadItems = new Map();
+    existingAudio = new Map();
+    renderedSongCount = 150;
     cancellingScope = null;
     retryingTarget = null;
   }
@@ -302,7 +467,7 @@
       const value = await invoke<SearchResult>('music_search', {
         request: context,
       });
-      if (serial === requestSerial) result = value;
+      if (serial === requestSerial) applySearchSnapshot(value);
     } catch (error) {
       if (serial === requestSerial) errorMessage = errorText(error);
     } finally {
@@ -351,9 +516,8 @@
     try {
       const value = await invoke<DownloadBatchResult>('music_download_batch', {
         request: {
-          keyword: result.keyword,
-          source: result.source,
-          songs,
+          searchRequestId: result.requestId,
+          songIds: songs.map((song) => song.id),
           bitrate: Number(bitrate),
           embedCover,
           downloadLyrics,
@@ -417,6 +581,7 @@
     if (defaultDirectory) {
       baseDirectory = defaultDirectory;
       directoryMessage = '';
+      void scanExisting();
       return;
     }
     directoryLoading = true;
@@ -424,6 +589,7 @@
     try {
       defaultDirectory = await invoke<string>('music_get_default_directory');
       baseDirectory = defaultDirectory;
+      void scanExisting();
     } catch (error) {
       directoryMessage = `无法读取默认目录：${errorText(error)}`;
     } finally {
@@ -441,8 +607,10 @@
         defaultPath: baseDirectory || defaultDirectory || undefined,
         title: '选择音乐保存目录',
       });
-      if (typeof selectedDirectory === 'string')
+      if (typeof selectedDirectory === 'string') {
         baseDirectory = selectedDirectory;
+        void scanExisting();
+      }
     } catch (error) {
       directoryMessage = `无法选择目录：${errorText(error)}`;
     }
@@ -490,7 +658,7 @@
       <p>搜索音乐，把喜欢的声音带回本地</p>
     </div>
     <RuntimeTools />
-    <span class="version">DESKTOP · 0.1.0</span>
+    <span class="version">DESKTOP{appVersion ? ` · ${appVersion}` : ''}</span>
   </header>
 
   <section class="search-panel" aria-label="搜索设置">
@@ -593,6 +761,7 @@
               : '留空时使用系统音乐目录'}
             aria-describedby="directory-message"
             title={baseDirectory}
+            onchange={() => void scanExisting()}
           />
           <button
             type="button"
@@ -646,9 +815,11 @@
       </div>
     {:else if searching}
       <div class="message">
-        <i class="pulse"></i><strong>正在获取搜索结果</strong><span
-          >首次搜索可能需要几秒钟。</span
-        >
+        <i class="pulse"></i><strong
+          >{rateLimitSeconds
+            ? `请求额度冷却中，约 ${rateLimitSeconds} 秒后继续`
+            : '正在获取搜索结果'}</strong
+        ><span>首次搜索或大量结果可能需要一些时间。</span>
       </div>
     {:else if result && result.songs.length === 0}
       <div class="message">
@@ -678,7 +849,7 @@
           >
         </div>
       {/if}
-      <div class="table-wrap">
+      <div class="table-wrap" onscroll={handleTableScroll}>
         <table>
           <thead
             ><tr
@@ -688,7 +859,7 @@
             ></thead
           >
           <tbody
-            >{#each result.songs as song, index (keyOf(song))}
+            >{#each renderedSongs() as song, index (keyOf(song))}
               {@const item = downloadItems.get(song.id)}
               {@const isCurrent =
                 downloading && downloadProgress?.currentSongId === song.id}
@@ -740,6 +911,17 @@
                       >
                     {:else if downloading && selected.has(keyOf(song))}<span
                         class="status waiting">等待</span
+                      >
+                    {:else if existingAudio.has(song.id)}<span
+                        class="status skipped"
+                        title={`本地已有 ${existingAudio
+                          .get(song.id)
+                          ?.join('、')
+                          .toUpperCase()}`}
+                        >本地已有 {existingAudio
+                          .get(song.id)
+                          ?.join('/')
+                          .toUpperCase()}</span
                       >
                     {:else}<span class="status idle">—</span>{/if}
                     {#if item?.state === 'failed' || item?.state === 'cancelled'}
@@ -797,6 +979,10 @@
           {downloadProgress.bytesPerSecond
             ? ` · ${bytes(downloadProgress.bytesPerSecond)}/s`
             : ''}
+          {progressPercent(downloadProgress) !== null
+            ? ` · ${progressPercent(downloadProgress)}%`
+            : ''}
+          {rateLimitSeconds ? ` · 限流冷却约 ${rateLimitSeconds} 秒` : ''}
         </span>
         {#if downloadProgress.currentTotalBytes}
           <progress

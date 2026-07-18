@@ -5,6 +5,8 @@ pub mod download;
 #[cfg(feature = "feasibility")]
 mod network_policy;
 #[cfg(feature = "feasibility")]
+pub(crate) mod rate_limiter;
+#[cfg(feature = "feasibility")]
 pub mod search;
 #[cfg(feature = "feasibility")]
 mod storage_space;

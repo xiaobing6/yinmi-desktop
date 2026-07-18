@@ -13,6 +13,8 @@ use feasibility::signature_webview::{
 #[cfg(feature = "feasibility")]
 use music::download::MusicDownloadService;
 #[cfg(feature = "feasibility")]
+use music::rate_limiter::MusicRateLimiter;
+#[cfg(feature = "feasibility")]
 use music::search::MusicSearchService;
 #[cfg(feature = "feasibility")]
 use std::sync::Arc;
@@ -51,11 +53,19 @@ pub fn run() {
         .setup(|app| {
             let runtime = Arc::new(SignatureRuntime::new(app.handle().clone()));
             let coordinator = Arc::new(SignatureExitCoordinator::new());
-            let search = Arc::new(MusicSearchService::new(Arc::clone(&runtime))?);
-            let download = Arc::new(MusicDownloadService::new(Arc::clone(&runtime))?);
+            let limiter = Arc::new(MusicRateLimiter::new(app.handle().clone()));
+            let search = Arc::new(MusicSearchService::new(
+                Arc::clone(&runtime),
+                Arc::clone(&limiter),
+            )?);
+            let download = Arc::new(MusicDownloadService::new(
+                Arc::clone(&runtime),
+                Arc::clone(&limiter),
+            )?);
             let exit_state = Arc::new(ProductExitState::default());
             app.manage(Arc::clone(&runtime));
             app.manage(Arc::clone(&coordinator));
+            app.manage(limiter);
             app.manage(search);
             app.manage(download);
             app.manage(exit_state);
@@ -75,7 +85,10 @@ pub fn run() {
             feasibility::feasibility_run_gd_probe,
             feasibility::feasibility_ipc_canary,
             music::search::music_search,
+            music::search::music_get_search_snapshot,
             music::download::music_download_batch,
+            music::download::music_get_download_snapshot,
+            music::download::music_scan_existing,
             music::download::music_retry_failed,
             music::download::music_get_default_directory,
             music::download::music_cancel_current_download,
@@ -85,6 +98,7 @@ pub fn run() {
             app_runtime::app_open_log_directory,
             app_runtime::app_cancel_exit,
             app_runtime::app_set_update_active,
+            app_runtime::app_get_activity_status,
             app_runtime::app_confirm_exit,
             app_runtime::app_prepare_restart,
         ]);

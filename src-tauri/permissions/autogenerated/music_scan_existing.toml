@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-scan-existing"
+description = "Enables the music_scan_existing command without any pre-configured scope."
+commands.allow = ["music_scan_existing"]
+
+[[permission]]
+identifier = "deny-music-scan-existing"
+description = "Denies the music_scan_existing command without any pre-configured scope."
+commands.deny = ["music_scan_existing"]

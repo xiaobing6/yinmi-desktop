@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-get-activity-status"
+description = "Enables the app_get_activity_status command without any pre-configured scope."
+commands.allow = ["app_get_activity_status"]
+
+[[permission]]
+identifier = "deny-app-get-activity-status"
+description = "Denies the app_get_activity_status command without any pre-configured scope."
+commands.deny = ["app_get_activity_status"]

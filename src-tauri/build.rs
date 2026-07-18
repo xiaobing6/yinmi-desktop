@@ -7,7 +7,10 @@ const FEASIBILITY_COMMANDS: &[&str] = &[
     "feasibility_run_gd_probe",
     "feasibility_ipc_canary",
     "music_search",
+    "music_get_search_snapshot",
     "music_download_batch",
+    "music_get_download_snapshot",
+    "music_scan_existing",
     "music_retry_failed",
     "music_get_default_directory",
     "music_cancel_current_download",
@@ -17,6 +20,7 @@ const FEASIBILITY_COMMANDS: &[&str] = &[
     "app_open_log_directory",
     "app_cancel_exit",
     "app_set_update_active",
+    "app_get_activity_status",
     "app_confirm_exit",
     "app_prepare_restart",
 ];

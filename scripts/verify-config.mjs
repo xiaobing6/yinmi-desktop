@@ -26,7 +26,7 @@ const feasibilityCommands = [
 ];
 
 assert.equal(packageJson.name, 'yinmi');
-assert.equal(packageJson.version, '0.1.0');
+assert.equal(packageJson.version, '0.1.1');
 assert.equal(packageJson.packageManager, 'pnpm@11.7.0');
 assert.equal(nodeVersion, '24');
 assert.equal(tauri.productName, '音觅');

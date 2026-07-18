@@ -1,13 +1,15 @@
 [[permission]]
 identifier = "allow-music-search"
 description = "Allows the local main window to search the built-in music sources."
-commands.allow = ["music_search"]
+commands.allow = ["music_search", "music_get_search_snapshot"]
 
 [[permission]]
 identifier = "allow-music-download"
 description = "Allows the local main window to download selected songs and open the download directory."
 commands.allow = [
   "music_download_batch",
+  "music_get_download_snapshot",
+  "music_scan_existing",
   "music_retry_failed",
   "music_get_default_directory",
   "music_cancel_current_download",

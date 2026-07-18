@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
   import { exit } from '@tauri-apps/plugin-process';
   import type { Component } from 'svelte';
   import { onMount } from 'svelte';
@@ -9,6 +10,29 @@
   let productReady = feasibilityMode;
   let startupError = '';
   let starting = !feasibilityMode;
+  type StartupStageState = 'pending' | 'working' | 'done' | 'error';
+  interface StartupProgress {
+    id: string;
+    label: string;
+    state: 'working' | 'done';
+    detail: string | null;
+  }
+  interface StartupStage {
+    id: string;
+    label: string;
+    state: StartupStageState;
+    detail: string | null;
+  }
+  const freshStages = (): StartupStage[] => [
+    { id: 'log', label: '运行日志', state: 'pending', detail: null },
+    { id: 'webview', label: '系统 WebView', state: 'pending', detail: null },
+    { id: 'signature', label: '音乐签名环境', state: 'pending', detail: null },
+    { id: 'source', label: '固定音源', state: 'pending', detail: null },
+    { id: 'download', label: '下载引擎', state: 'pending', detail: null },
+    { id: 'update', label: '应用更新', state: 'pending', detail: null },
+  ];
+  let startupStages = freshStages();
+  let showStartupDetails = false;
   let FeasibilityPanel: Component | undefined;
   if (feasibilityMode) {
     void import('./lib/feasibility/FeasibilityPanel.svelte').then(
@@ -26,6 +50,12 @@
   async function initializeProduct() {
     starting = true;
     startupError = '';
+    startupStages = freshStages();
+    showStartupDetails = false;
+    const detailsTimer = window.setTimeout(
+      () => (showStartupDetails = true),
+      800,
+    );
     try {
       await Promise.all([
         invoke('app_initialize'),
@@ -34,13 +64,38 @@
       productReady = true;
     } catch (error) {
       startupError = errorText(error);
+      showStartupDetails = true;
+      startupStages = startupStages.map((stage) =>
+        stage.state === 'working' ? { ...stage, state: 'error' } : stage,
+      );
     } finally {
+      clearTimeout(detailsTimer);
       starting = false;
     }
   }
 
   onMount(() => {
-    if (!feasibilityMode) void initializeProduct();
+    if (feasibilityMode) return;
+    let disposed = false;
+    let detach: (() => void) | undefined;
+    void listen<StartupProgress>('app-startup-progress', (event) => {
+      startupStages = startupStages.map((stage) =>
+        stage.id === event.payload.id ? { ...stage, ...event.payload } : stage,
+      );
+    }).then(
+      (stop) => {
+        if (disposed) stop();
+        else {
+          detach = stop;
+          void initializeProduct();
+        }
+      },
+      () => void initializeProduct(),
+    );
+    return () => {
+      disposed = true;
+      detach?.();
+    };
   });
 </script>
 
@@ -57,6 +112,26 @@
     <div class="splash-mark" aria-hidden="true"><i></i><i></i><b></b></div>
     <h1>音觅</h1>
     <p>{startupError || (starting ? '正在准备音乐服务…' : '启动未完成')}</p>
+    {#if showStartupDetails}
+      <ul class="startup-stages" aria-label="启动进度">
+        {#each startupStages as stage (stage.id)}
+          <li
+            class:done={stage.state === 'done'}
+            class:error={stage.state === 'error'}
+          >
+            <i aria-hidden="true"></i><span>{stage.label}</span><small
+              >{stage.state === 'done'
+                ? stage.detail || '完成'
+                : stage.state === 'working'
+                  ? '正在初始化'
+                  : stage.state === 'error'
+                    ? '失败'
+                    : '等待'}</small
+            >
+          </li>
+        {/each}
+      </ul>
+    {/if}
     {#if startupError}
       <div class="splash-actions">
         <button type="button" onclick={() => void initializeProduct()}
@@ -124,9 +199,51 @@
     letter-spacing: 0.16em;
   }
   main.splash p {
+    max-width: min(720px, 86vw);
     margin: 0;
     color: #718091;
     font-size: 0.76rem;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+  .startup-stages {
+    display: grid;
+    width: min(520px, 84vw);
+    margin: 18px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .startup-stages li {
+    display: grid;
+    grid-template-columns: 12px 120px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    border-top: 1px solid #e0e8ef;
+    padding: 7px 3px;
+    color: #718091;
+    font-size: 0.72rem;
+    text-align: left;
+  }
+  .startup-stages i {
+    width: 8px;
+    height: 8px;
+    border: 2px solid #aebdca;
+    border-radius: 50%;
+  }
+  .startup-stages li.done i {
+    border-color: #13785c;
+    background: #13785c;
+  }
+  .startup-stages li.error i {
+    border-color: #b63f38;
+    background: #b63f38;
+  }
+  .startup-stages small {
+    overflow: hidden;
+    color: #8a98a5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .splash-actions {
     display: flex;

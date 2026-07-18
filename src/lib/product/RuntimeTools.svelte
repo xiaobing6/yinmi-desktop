@@ -32,6 +32,10 @@
     level: LogLevel;
     message: string;
   }
+  interface AppActivityStatus {
+    musicDownloadActive: boolean;
+    updateDownloadActive: boolean;
+  }
 
   const MAX_LOGS = 2_000;
   let logs: RuntimeLog[] = [];
@@ -43,7 +47,7 @@
   let autoScroll = true;
   let copied = false;
   let runtimeError = '';
-  let version = '0.1.0';
+  let version = '';
   let updateState: UpdateState = 'idle';
   let update: Update | null = null;
   let updateBytes = 0;
@@ -139,10 +143,26 @@
 
   async function installUpdate() {
     if (!update || updateState !== 'ready') return;
-    updateState = 'installing';
     updateMessage = '';
     try {
-      await invoke('app_prepare_restart');
+      const activity = await invoke<AppActivityStatus>(
+        'app_get_activity_status',
+      );
+      let cancelMusicDownloads = false;
+      if (activity.musicDownloadActive) {
+        cancelMusicDownloads = await confirm(
+          '仍有歌曲正在下载。现在安装更新会取消剩余歌曲，并等待临时文件清理完成。',
+          {
+            title: '安装音觅更新',
+            kind: 'warning',
+            okLabel: '取消下载并安装',
+            cancelLabel: '继续下载歌曲',
+          },
+        );
+        if (!cancelMusicDownloads) return;
+      }
+      updateState = 'installing';
+      await invoke('app_prepare_restart', { cancelMusicDownloads });
       await update.install();
       await relaunch();
     } catch (error) {
@@ -198,8 +218,16 @@
     );
     void logInfo('音觅界面已启动');
     void listen('app-exit-blocked', async () => {
+      const activity = await invoke<AppActivityStatus>(
+        'app_get_activity_status',
+      ).catch(() => ({
+        musicDownloadActive: true,
+        updateDownloadActive: updateState === 'downloading',
+      }));
       const accepted = await confirm(
-        '仍有歌曲或应用更新正在下载。退出会取消剩余任务，并清理尚未完成的临时文件。',
+        activity.updateDownloadActive
+          ? '更新包仍在下载。确认退出后会取消剩余歌曲，但会等待更新下载进入安全状态再退出。'
+          : '仍有歌曲正在下载。退出会取消剩余歌曲，并等待临时文件清理完成。',
         {
           title: '退出音觅',
           kind: 'warning',
@@ -207,13 +235,12 @@
           cancelLabel: '继续下载',
         },
       );
-      if (accepted && updateState === 'downloading') {
-        await update?.close().catch(() => undefined);
-        await invoke('app_set_update_active', { active: false }).catch(
-          () => undefined,
-        );
+      try {
+        await invoke(accepted ? 'app_confirm_exit' : 'app_cancel_exit');
+      } catch (error) {
+        runtimeError = errorText(error);
+        await logError(`退出失败：${runtimeError}`);
       }
-      await invoke(accepted ? 'app_confirm_exit' : 'app_cancel_exit');
     }).then((stop) => {
       if (disposed) stop();
       else detachExit = stop;
@@ -533,9 +560,7 @@
   }
   @media (max-width: 900px) {
     .update-status,
-    .update-error,
-    .update-action,
-    .quiet {
+    .update-error {
       display: none;
     }
   }
