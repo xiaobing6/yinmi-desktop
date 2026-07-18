@@ -42,6 +42,7 @@ impl StickyCallbackGate {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn duplicate_faulted(&self) -> bool {
         self.duplicate_fault.load(Ordering::Acquire)
     }

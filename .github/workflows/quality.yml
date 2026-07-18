@@ -36,3 +36,33 @@ jobs:
       - run: pnpm run quality
       - run: pnpm run lint:rust
       - run: pnpm run test:rust
+
+  macos-rust:
+    name: macOS Rust warnings
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: macos-aarch64-warnings
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Check macOS Rust with warnings denied
+        env:
+          RUSTFLAGS: -D warnings
+        run: >-
+          cargo check
+          --manifest-path src-tauri/Cargo.toml
+          --target aarch64-apple-darwin

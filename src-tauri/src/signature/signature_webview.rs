@@ -515,6 +515,7 @@ impl SignatureRuntime {
                     }
                     break;
                 }
+                #[cfg(windows)]
                 HostEvent::PolicyFault {
                     generation,
                     operation_id,
@@ -528,9 +529,10 @@ impl SignatureRuntime {
         }
 
         loop {
-            while let Ok(event) = events.try_recv() {
+            while let Ok(_event) = events.try_recv() {
+                #[cfg(windows)]
                 if matches!(
-                    event,
+                    _event,
                     HostEvent::PolicyFault {
                         generation,
                         operation_id,

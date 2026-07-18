@@ -1,5 +1,5 @@
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -10,7 +10,6 @@ use objc2_web_kit::{
     WKContentRuleList, WKContentRuleListStore, WKUserContentController, WKWebViewConfiguration,
     WKWebsiteDataStore,
 };
-use tauri::Manager;
 use url::Url;
 use wry::WebViewBuilderExtMacos;
 
@@ -175,14 +174,6 @@ impl PendingMacosResourcePolicy {
         })
     }
 
-    pub(crate) fn cleanup_identity(&self) -> MacPolicyIdentity {
-        self.identity.clone()
-    }
-
-    pub(crate) fn cleanup_latch(&self) -> Arc<MacCleanupLatch> {
-        Arc::clone(&self.latch)
-    }
-
     pub(crate) fn matches(&self, identity: &MacPolicyIdentity, latch: &MacCleanupLatch) -> bool {
         &self.identity == identity && std::ptr::eq(self.latch.as_ref(), latch)
     }
@@ -218,7 +209,7 @@ impl PendingMacosResourcePolicy {
                 mode: "wk-content-rule-list-exact-origin".into(),
                 strong_source_kinds_interface_available: false,
             },
-            counters,
+            _counters: counters,
             latch: self.latch,
             consumed: false,
         }
@@ -272,7 +263,7 @@ pub(crate) struct MacosResourcePolicyGuard {
     controller: Retained<WKUserContentController>,
     rule: Option<Retained<WKContentRuleList>>,
     metadata: ResourcePolicyMetadata,
-    counters: Arc<IsolationCounters>,
+    _counters: Arc<IsolationCounters>,
     latch: Arc<MacCleanupLatch>,
     consumed: bool,
 }
@@ -280,10 +271,6 @@ pub(crate) struct MacosResourcePolicyGuard {
 impl MacosResourcePolicyGuard {
     pub(crate) fn metadata(&self) -> &ResourcePolicyMetadata {
         &self.metadata
-    }
-
-    pub(crate) fn counters(&self) -> &Arc<IsolationCounters> {
-        &self.counters
     }
 
     fn take_late_owner_on_ui(&mut self) -> Result<LateMacPolicyOwner, SignatureError> {

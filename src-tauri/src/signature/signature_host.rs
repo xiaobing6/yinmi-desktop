@@ -498,6 +498,7 @@ pub(crate) enum HostEvent {
         operation_id: u64,
         url: String,
     },
+    #[cfg(windows)]
     PolicyFault {
         generation: u64,
         operation_id: u64,
@@ -546,6 +547,9 @@ struct MainThreadSignatureInstance {
     host: tauri::Window<tauri::Wry>,
     webview: wry::WebView,
     policy: ActiveResourcePolicy,
+    #[cfg(target_os = "macos")]
+    _counters: Arc<IsolationCounters>,
+    #[cfg(not(target_os = "macos"))]
     counters: Arc<IsolationCounters>,
     ticket: Arc<CreationTicket>,
     trace: UiCreationTrace,
@@ -1154,7 +1158,7 @@ pub(crate) fn complete_macos_compile_on_ui(
             if pending.generation == identity.generation
                 && pending.operation_id == identity.operation_id =>
         {
-            let Some(mut native) = pending.policy_build.native.take() else {
+            let Some(native) = pending.policy_build.native.take() else {
                 RAW_SIGNATURE_SLOT.with(|slot| {
                     *slot.borrow_mut() = MainThreadSignatureSlot::Pending(pending);
                 });
@@ -1236,7 +1240,7 @@ pub(crate) fn fail_macos_compile_affinity_on_ui(
     let active = RAW_SIGNATURE_SLOT
         .with(|slot| mem::replace(&mut *slot.borrow_mut(), MainThreadSignatureSlot::Empty));
     match active {
-        MainThreadSignatureSlot::Pending(mut pending)
+        MainThreadSignatureSlot::Pending(pending)
             if pending.generation == identity.generation
                 && pending.operation_id == identity.operation_id
                 && pending
@@ -1295,8 +1299,6 @@ fn finish_macos_raw_child_on_ui(
         let _ = transition_macos_pending_to_destroying(pending, SignatureError::Cancelled, false);
         return;
     }
-    let generation = pending.generation;
-    let operation_id = pending.operation_id;
     let (webview, counters, builder_spec) =
         match build_macos_raw_child_on_ui(&mut pending, configuration) {
             Ok(built) => built,
@@ -1419,7 +1421,7 @@ fn activate_macos_raw_child_on_ui(
                 host: pending.host,
                 webview,
                 policy,
-                counters,
+                _counters: counters,
                 ticket: Arc::clone(&pending.ticket),
                 trace: pending.trace,
             }));
@@ -1808,7 +1810,7 @@ fn destroy_generation_on_ui(ticket: &Arc<CreationTicket>) -> Result<(), Signatur
     });
     match active {
         MainThreadSignatureSlot::Empty => Ok(()),
-        MainThreadSignatureSlot::Pending(mut pending)
+        MainThreadSignatureSlot::Pending(pending)
             if pending.generation == ticket.generation
                 && pending.operation_id == ticket.operation_id =>
         {
@@ -1823,6 +1825,7 @@ fn destroy_generation_on_ui(ticket: &Arc<CreationTicket>) -> Result<(), Signatur
 
             #[cfg(windows)]
             {
+                let mut pending = pending;
                 pending.trace.record_cancelled();
                 let _ = &pending.builder_spec;
                 let _ = &pending.events;
@@ -1858,6 +1861,7 @@ fn destroy_generation_on_ui(ticket: &Arc<CreationTicket>) -> Result<(), Signatur
 
             #[cfg(not(any(windows, target_os = "macos")))]
             {
+                let mut pending = pending;
                 pending.trace.record_cancelled();
                 let _ = &pending.builder_spec;
                 let _ = &pending.events;
