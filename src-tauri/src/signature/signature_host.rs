@@ -521,8 +521,8 @@ thread_local! {
 
 enum MainThreadSignatureSlot {
     Empty,
-    Pending(PendingMainThreadSignatureInstance),
-    Ready(MainThreadSignatureInstance),
+    Pending(Box<PendingMainThreadSignatureInstance>),
+    Ready(Box<MainThreadSignatureInstance>),
     Destroying(DestroyingMainThreadSignatureInstance),
 }
 
@@ -802,18 +802,19 @@ fn install_raw_child_on_ui(
             ));
         }
         trace.record(CreationStep::PendingInserted);
-        *slot = MainThreadSignatureSlot::Pending(PendingMainThreadSignatureInstance {
-            generation: ticket.generation,
-            operation_id: ticket.operation_id,
-            host,
-            ticket: Arc::clone(&ticket),
-            builder_spec,
-            policy_build: PendingResourcePolicy::default(),
-            events,
-            trace,
-            #[cfg(target_os = "macos")]
-            initialization_result: None,
-        });
+        *slot =
+            MainThreadSignatureSlot::Pending(Box::new(PendingMainThreadSignatureInstance {
+                generation: ticket.generation,
+                operation_id: ticket.operation_id,
+                host,
+                ticket: Arc::clone(&ticket),
+                builder_spec,
+                policy_build: PendingResourcePolicy::default(),
+                events,
+                trace,
+                #[cfg(target_os = "macos")]
+                initialization_result: None,
+            }));
         RAW_SIGNATURE_SLOT_ACTIVE.store(true, Ordering::Release);
         Ok(())
     })?;
@@ -850,7 +851,7 @@ fn install_raw_child_on_ui(
         mut policy_build,
         events,
         mut trace,
-    } = pending;
+    } = *pending;
     let counters = Arc::new(IsolationCounters::default());
     let navigation_origin = Url::parse(&builder_spec.profile.navigation_url)
         .map_err(|_| SignatureError::OriginRejected)?;
@@ -976,16 +977,17 @@ fn install_raw_child_on_ui(
     };
     trace.record(CreationStep::ReadyTransition);
     RAW_SIGNATURE_SLOT.with(|slot| {
-        *slot.borrow_mut() = MainThreadSignatureSlot::Ready(MainThreadSignatureInstance {
-            generation,
-            operation_id,
-            host,
-            webview,
-            policy,
-            counters,
-            ticket: Arc::clone(&ticket),
-            trace,
-        });
+        *slot.borrow_mut() =
+            MainThreadSignatureSlot::Ready(Box::new(MainThreadSignatureInstance {
+                generation,
+                operation_id,
+                host,
+                webview,
+                policy,
+                counters,
+                ticket: Arc::clone(&ticket),
+                trace,
+            }));
     });
     UI_ACTOR_MODEL.with(|actor| {
         actor
@@ -1047,17 +1049,18 @@ fn install_raw_child_on_ui(
             ));
         }
         trace.record(CreationStep::PendingInserted);
-        *slot = MainThreadSignatureSlot::Pending(PendingMainThreadSignatureInstance {
-            generation: ticket.generation,
-            operation_id: ticket.operation_id,
-            host,
-            ticket: Arc::clone(&ticket),
-            builder_spec,
-            policy_build: PendingResourcePolicy::default(),
-            events,
-            trace,
-            initialization_result: Some(result),
-        });
+        *slot =
+            MainThreadSignatureSlot::Pending(Box::new(PendingMainThreadSignatureInstance {
+                generation: ticket.generation,
+                operation_id: ticket.operation_id,
+                host,
+                ticket: Arc::clone(&ticket),
+                builder_spec,
+                policy_build: PendingResourcePolicy::default(),
+                events,
+                trace,
+                initialization_result: Some(result),
+            }));
         RAW_SIGNATURE_SLOT_ACTIVE.store(true, Ordering::Release);
         Ok(())
     });
@@ -1272,7 +1275,7 @@ pub(crate) fn fail_macos_compile_affinity_on_ui(
 
 #[cfg(target_os = "macos")]
 fn finish_macos_raw_child_on_ui(
-    mut pending: PendingMainThreadSignatureInstance,
+    mut pending: Box<PendingMainThreadSignatureInstance>,
     mut native: super::webview_resource_policy::macos::PendingMacosResourcePolicy,
     rule: objc2::rc::Retained<objc2_web_kit::WKContentRuleList>,
 ) {
@@ -1391,7 +1394,7 @@ fn build_macos_raw_child_on_ui(
 
 #[cfg(target_os = "macos")]
 fn activate_macos_raw_child_on_ui(
-    mut pending: PendingMainThreadSignatureInstance,
+    mut pending: Box<PendingMainThreadSignatureInstance>,
     webview: wry::WebView,
     policy: ActiveResourcePolicy,
     counters: Arc<IsolationCounters>,
@@ -1409,16 +1412,17 @@ fn activate_macos_raw_child_on_ui(
     pending.trace.record(CreationStep::ReadyTransition);
     let result_sender = pending.initialization_result.take();
     RAW_SIGNATURE_SLOT.with(|slot| {
-        *slot.borrow_mut() = MainThreadSignatureSlot::Ready(MainThreadSignatureInstance {
-            generation,
-            operation_id,
-            host: pending.host,
-            webview,
-            policy,
-            counters,
-            ticket: Arc::clone(&pending.ticket),
-            trace: pending.trace,
-        });
+        *slot.borrow_mut() =
+            MainThreadSignatureSlot::Ready(Box::new(MainThreadSignatureInstance {
+                generation,
+                operation_id,
+                host: pending.host,
+                webview,
+                policy,
+                counters,
+                ticket: Arc::clone(&pending.ticket),
+                trace: pending.trace,
+            }));
     });
     if pending.ticket.is_cancelled() {
         if let Some(sender) = result_sender {
@@ -1472,7 +1476,7 @@ fn fail_macos_pending_on_ui(generation: u64, operation_id: u64, error: Signature
 
 #[cfg(target_os = "macos")]
 fn transition_macos_pending_to_destroying(
-    mut pending: PendingMainThreadSignatureInstance,
+    mut pending: Box<PendingMainThreadSignatureInstance>,
     error: SignatureError,
     cleanup_if_no_native: bool,
 ) -> Result<(), SignatureError> {
