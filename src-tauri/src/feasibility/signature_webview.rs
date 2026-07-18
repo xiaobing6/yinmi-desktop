@@ -32,6 +32,7 @@ pub const SIGNATURE_WEBVIEW_ID: &str = "gd-signature-raw-wry";
 pub const INIT_TIMEOUT: Duration = Duration::from_secs(20);
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 pub const DESTROY_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(any(windows, target_os = "macos"))]
 pub(crate) const SCENARIO_INIT_CALLBACK_DELAY: Duration = Duration::from_secs(21);
 pub(crate) const SCENARIO_SIGN_CALLBACK_DELAY: Duration = Duration::from_secs(10);
 pub const MAX_SIGNATURE_BYTES: usize = 128;
@@ -1483,6 +1484,7 @@ impl NavigationGate {
         }
     }
 
+    #[cfg(any(windows, target_os = "macos"))]
     pub(crate) fn for_origin(allowed_origin: Url) -> Self {
         Self {
             bootstrap_pending: AtomicBool::new(true),
@@ -1742,15 +1744,22 @@ mod tests {
     async fn signature_webview_ignores_a_callback_arriving_after_timeout() {
         let callback_ran = Arc::new(AtomicBool::new(false));
         let callback_ran_in_thread = Arc::clone(&callback_ran);
+        let (release_callback, wait_for_release) = std::sync::mpsc::channel();
+        let (callback_finished, wait_for_callback) = std::sync::mpsc::channel();
 
         let result = eval_json_with::<Value, _, ()>(
             "fixed".to_string(),
             Duration::from_millis(1),
             move |_, callback| {
                 std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_millis(20));
+                    wait_for_release
+                        .recv()
+                        .expect("late callback release sender stays alive");
                     callback_ran_in_thread.store(true, Ordering::SeqCst);
                     callback("null".to_string());
+                    callback_finished
+                        .send(())
+                        .expect("late callback waiter stays alive");
                 });
                 Ok(())
             },
@@ -1758,7 +1767,12 @@ mod tests {
         .await;
 
         assert!(matches!(result, Err(SignatureError::Timeout)));
-        tokio::time::sleep(Duration::from_millis(40)).await;
+        release_callback
+            .send(())
+            .expect("late callback worker stays alive");
+        wait_for_callback
+            .recv_timeout(Duration::from_secs(1))
+            .expect("late callback completes after release");
         assert!(callback_ran.load(Ordering::SeqCst));
     }
 

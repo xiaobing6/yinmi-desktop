@@ -1,3 +1,5 @@
+#![cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
@@ -6,14 +8,17 @@ use std::{cell::RefCell, mem};
 
 use super::{
     signature_webview::{
-        GD_PAGE_URL, NavigationGate, SCENARIO_INIT_CALLBACK_DELAY, SCENARIO_SIGN_CALLBACK_DELAY,
-        SIGNATURE_HOST_WINDOW_LABEL, SIGNATURE_WEBVIEW_ID, SignatureError,
+        GD_PAGE_URL, SCENARIO_SIGN_CALLBACK_DELAY, SIGNATURE_HOST_WINDOW_LABEL, SignatureError,
     },
     webview_resource_policy::{IsolationCounters, ResourcePolicyMetadata},
 };
 use tauri::Manager;
 use url::Url;
 
+#[cfg(any(windows, target_os = "macos"))]
+use super::signature_webview::{
+    NavigationGate, SCENARIO_INIT_CALLBACK_DELAY, SIGNATURE_WEBVIEW_ID,
+};
 #[cfg(any(windows, target_os = "macos"))]
 use super::webview_resource_policy::ResourcePolicyGuard;
 
@@ -818,6 +823,10 @@ thread_local! {
     static UI_ACTOR_MODEL: RefCell<ActorModel> = RefCell::new(ActorModel::default());
 }
 
+#[cfg_attr(
+    not(any(windows, target_os = "macos")),
+    allow(clippy::large_enum_variant)
+)]
 enum MainThreadSignatureSlot {
     Empty,
     Pending(PendingMainThreadSignatureInstance),
@@ -933,7 +942,7 @@ pub(crate) async fn create_raw_signature_host(
         let build_app = task_app.clone();
         let build_ticket = Arc::clone(&task_ticket);
         let host_result = tokio::task::spawn_blocking(move || {
-            let mut builder = tauri::window::WindowBuilder::new(
+            let builder = tauri::window::WindowBuilder::new(
                 &build_app,
                 build_ticket.host_label().to_string(),
             )
@@ -945,9 +954,7 @@ pub(crate) async fn create_raw_signature_host(
             .shadow(false)
             .resizable(false);
             #[cfg(windows)]
-            {
-                builder = builder.skip_taskbar(true);
-            }
+            let builder = builder.skip_taskbar(true);
             builder.build().map_err(|error| {
                 SignatureError::Webview(format!("native signature host creation failed: {error}"))
             })

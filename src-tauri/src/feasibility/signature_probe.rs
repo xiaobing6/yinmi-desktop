@@ -77,6 +77,7 @@ pub(crate) struct ControlledCanaryConfigWire {
 #[derive(Clone, Debug)]
 pub(crate) struct ControlledCanaryConfig {
     pub(crate) run_id: String,
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     pub(crate) platform_id: String,
     pub(crate) control_origin: Url,
     pub(crate) allowed_origin: Url,

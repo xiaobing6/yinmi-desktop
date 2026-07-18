@@ -528,6 +528,7 @@ pub fn classify_resource_request(raw: &str) -> ResourceRequestDecision {
     ResourceRequestDecision::Block { canary }
 }
 
+#[cfg(windows)]
 pub(crate) fn classify_resource_request_for(
     allowed_origin: &Url,
     raw: &str,
