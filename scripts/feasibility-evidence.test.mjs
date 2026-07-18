@@ -146,7 +146,6 @@ const TASK_4_SCOPE = [
   'src/App.svelte',
   'src/App.test.ts',
   'src/lib/feasibility/FeasibilityPanel.svelte',
-  'src/lib/feasibility/FeasibilityPanel.test.ts',
   'src/lib/feasibility/GdProbe.svelte',
   'src/vite-env.d.ts',
   'vite.config.ts',

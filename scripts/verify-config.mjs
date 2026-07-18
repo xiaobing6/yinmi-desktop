@@ -64,6 +64,14 @@ assert.equal(feasibilityCapability.local, true);
 assert.deepEqual(feasibilityCapability.permissions, [
   'core:default',
   'feasibility',
+  'allow-music-search',
+  'allow-music-download',
+  'allow-app-runtime',
+  'dialog:default',
+  'log:default',
+  'updater:default',
+  'process:allow-restart',
+  'process:allow-exit',
 ]);
 for (const forbiddenKey of ['remote', 'urls']) {
   assert.equal(forbiddenKey in feasibilityCapability, false);
@@ -96,11 +104,9 @@ assert.match(
   /cfg\(not\(feature = "feasibility"\)\)[\s\S]*permissions\/default\/\*\*\/\*/,
 );
 assert.deepEqual(
-  [
-    ...buildScript.matchAll(
-      /capabilities_path_pattern\("([^"]+)"\)/g,
-    ),
-  ].map((match) => match[1]),
+  [...buildScript.matchAll(/capabilities_path_pattern\("([^"]+)"\)/g)].map(
+    (match) => match[1],
+  ),
   ['capabilities/*main.json', 'capabilities/main.json'],
 );
 console.log('configuration contract: PASS');

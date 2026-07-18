@@ -127,9 +127,7 @@ fn validate_url(url: &Url) -> Result<(), MediaGetError> {
 
 fn serialized_authority(url: &Url) -> Option<&str> {
     let remainder = url.as_str().strip_prefix("https://")?;
-    let end = remainder
-        .find(|character| matches!(character, '/' | '?' | '#'))
-        .unwrap_or(remainder.len());
+    let end = remainder.find(['/', '?', '#']).unwrap_or(remainder.len());
     Some(&remainder[..end])
 }
 

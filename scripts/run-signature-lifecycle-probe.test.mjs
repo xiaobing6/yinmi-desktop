@@ -1354,7 +1354,10 @@ test('isolation autorun awaits one nonce-bound IPC readiness barrier without sle
       report > isolation,
     'process-info ACK must precede readiness, isolation and report submission',
   );
-  assert.doesNotMatch(autorun.slice(processInfo, isolation), /(?:sleep|interval)\s*\(/);
+  assert.doesNotMatch(
+    autorun.slice(processInfo, isolation),
+    /(?:sleep|interval)\s*\(/,
+  );
   assert.match(
     source,
     /IPC_CANARY_READY_DEADLINE[^;]*Duration::from_secs\(15\)/s,
@@ -1370,7 +1373,10 @@ test('isolation autorun awaits one nonce-bound IPC readiness barrier without sle
     assert.match(source, new RegExp(`\\b${state}\\b`));
   }
 
-  const start = source.slice(autorunEnd, source.indexOf('#[derive', autorunEnd));
+  const start = source.slice(
+    autorunEnd,
+    source.indexOf('#[derive', autorunEnd),
+  );
   assert.ok(
     start.indexOf('.arm(') >= 0 &&
       start.indexOf('tauri::async_runtime::spawn') > start.indexOf('.arm('),

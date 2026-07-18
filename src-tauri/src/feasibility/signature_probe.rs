@@ -1,10 +1,14 @@
 use std::{
     collections::BTreeMap,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Mutex,
+        atomic::{AtomicU8, AtomicU64, Ordering},
+    },
 };
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tauri::Manager;
+use tokio::sync::Notify;
 use url::Url;
 
 use super::{signature_webview::SignatureError, webview_resource_policy::IsolationCounterSnapshot};
@@ -165,6 +169,163 @@ pub(crate) fn parse_controlled_canary_config(
 const WRITE_MARKER_PHASE: &str = "write-marker-and-close-main";
 const VERIFY_MARKER_PHASE: &str = "verify-marker-absent";
 static IPC_CANARY_COUNT: AtomicU64 = AtomicU64::new(0);
+const IPC_CANARY_READY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(15);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+enum IpcCanaryReadinessState {
+    Inactive,
+    Armed,
+    BaselineIssued,
+    ReadyAccepted,
+    Sealed,
+    Failed,
+}
+
+impl IpcCanaryReadinessState {
+    fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            value if value == Self::Inactive as u8 => Some(Self::Inactive),
+            value if value == Self::Armed as u8 => Some(Self::Armed),
+            value if value == Self::BaselineIssued as u8 => Some(Self::BaselineIssued),
+            value if value == Self::ReadyAccepted as u8 => Some(Self::ReadyAccepted),
+            value if value == Self::Sealed as u8 => Some(Self::Sealed),
+            value if value == Self::Failed as u8 => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+struct IpcCanaryReadinessGate {
+    state: AtomicU8,
+    run_id: Mutex<Option<String>>,
+    notify: Notify,
+}
+
+impl IpcCanaryReadinessGate {
+    const fn new() -> Self {
+        Self {
+            state: AtomicU8::new(IpcCanaryReadinessState::Inactive as u8),
+            run_id: Mutex::new(None),
+            notify: Notify::const_new(),
+        }
+    }
+
+    fn arm(&self, run_id: &str) -> Result<(), SignatureError> {
+        self.state
+            .compare_exchange(
+                IpcCanaryReadinessState::Inactive as u8,
+                IpcCanaryReadinessState::Armed as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .map_err(|_| {
+                SignatureError::Webview("IPC canary readiness gate already used".into())
+            })?;
+        *self
+            .run_id
+            .lock()
+            .map_err(|_| SignatureError::Webview("IPC canary readiness gate poisoned".into()))? =
+            Some(run_id.to_owned());
+        Ok(())
+    }
+
+    fn accept_canary(&self) {
+        if self
+            .state
+            .compare_exchange(
+                IpcCanaryReadinessState::BaselineIssued as u8,
+                IpcCanaryReadinessState::ReadyAccepted as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+        {
+            self.notify.notify_one();
+        }
+    }
+
+    fn validate_run_id(&self, run_id: &str) -> Result<(), SignatureError> {
+        let armed_run_id = self
+            .run_id
+            .lock()
+            .map_err(|_| SignatureError::Webview("IPC canary readiness gate poisoned".into()))?;
+        if armed_run_id.as_deref() != Some(run_id) {
+            return Err(SignatureError::Webview(
+                "IPC canary readiness run ID mismatch".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn await_ready(&self, run_id: &str) -> Result<(), SignatureError> {
+        self.validate_run_id(run_id)?;
+        self.state
+            .compare_exchange(
+                IpcCanaryReadinessState::Armed as u8,
+                IpcCanaryReadinessState::BaselineIssued as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .map_err(|_| {
+                SignatureError::Webview("IPC canary readiness gate was not armed".into())
+            })?;
+
+        if IPC_CANARY_COUNT.load(Ordering::Acquire) > 0 {
+            self.accept_canary();
+        }
+
+        let accepted = tokio::time::timeout(IPC_CANARY_READY_DEADLINE, async {
+            loop {
+                let notified = self.notify.notified();
+                match IpcCanaryReadinessState::from_u8(self.state.load(Ordering::Acquire)) {
+                    Some(IpcCanaryReadinessState::ReadyAccepted) => break,
+                    Some(IpcCanaryReadinessState::Failed | IpcCanaryReadinessState::Sealed)
+                    | None => {
+                        return Err(SignatureError::Webview(
+                            "IPC canary readiness gate entered an invalid state".into(),
+                        ));
+                    }
+                    _ => notified.await,
+                }
+            }
+            Ok(())
+        })
+        .await;
+
+        match accepted {
+            Ok(Ok(())) => {
+                self.state
+                    .compare_exchange(
+                        IpcCanaryReadinessState::ReadyAccepted as u8,
+                        IpcCanaryReadinessState::Sealed as u8,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    )
+                    .map_err(|_| {
+                        SignatureError::Webview(
+                            "IPC canary readiness gate could not be sealed".into(),
+                        )
+                    })?;
+                Ok(())
+            }
+            Ok(Err(error)) => Err(error),
+            Err(_) => {
+                let _ = self.state.compare_exchange(
+                    IpcCanaryReadinessState::BaselineIssued as u8,
+                    IpcCanaryReadinessState::Failed as u8,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                );
+                Err(SignatureError::Webview(
+                    "IPC canary readiness timed out after 15 seconds".into(),
+                ))
+            }
+        }
+    }
+}
+
+static IPC_CANARY_READINESS: IpcCanaryReadinessGate = IpcCanaryReadinessGate::new();
 
 pub const RESOURCE_VECTOR_TRIGGERS: [(&str, &str); 20] = [
     (
@@ -312,7 +473,9 @@ pub fn autorun_configuration_from_environment() -> Result<Option<AutorunConfig>,
 }
 
 pub fn increment_ipc_canary() -> u64 {
-    IPC_CANARY_COUNT.fetch_add(1, Ordering::AcqRel) + 1
+    let count = IPC_CANARY_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
+    IPC_CANARY_READINESS.accept_canary();
+    count
 }
 
 pub(crate) fn reset_ipc_canary() -> u64 {
@@ -321,6 +484,10 @@ pub(crate) fn reset_ipc_canary() -> u64 {
 
 pub(crate) fn ipc_canary_snapshot() -> u64 {
     IPC_CANARY_COUNT.load(Ordering::Acquire)
+}
+
+async fn await_ipc_canary_readiness(run_id: &str) -> Result<(), SignatureError> {
+    IPC_CANARY_READINESS.await_ready(run_id).await
 }
 
 #[cfg(target_os = "macos")]
@@ -701,6 +868,7 @@ async fn run_lifecycle_autorun(
                 "isolation pre-stage requires the write-marker autorun phase".into(),
             ));
         }
+        await_ipc_canary_readiness(&config.run_id).await?;
         let report = run_isolation_probe(&runtime).await?;
         post_isolation_report(&client, &config, &report).await?;
         app.exit(0);
@@ -767,6 +935,7 @@ pub fn start_lifecycle_autorun(
     let Some(config) = autorun_configuration_from_environment()? else {
         return Ok(());
     };
+    IPC_CANARY_READINESS.arm(&config.run_id)?;
     let failure_app = app.clone();
     let failure_runtime = std::sync::Arc::clone(&runtime);
     let failure_coordinator = std::sync::Arc::clone(&coordinator);

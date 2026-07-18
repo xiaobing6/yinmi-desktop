@@ -256,6 +256,15 @@ struct SongProgress<'a> {
     counters: BatchCounters,
 }
 
+struct DownloadSongRequest<'a> {
+    directory: &'a Path,
+    source: GdSource,
+    bitrate: u16,
+    embed_cover: bool,
+    download_lyrics: bool,
+    song: &'a ProbeSong,
+}
+
 impl SongProgress<'_> {
     fn emit(
         &self,
@@ -420,12 +429,14 @@ impl MusicDownloadService {
             } else {
                 match self
                     .download_song(
-                        &directory,
-                        request.source,
-                        request.bitrate,
-                        request.embed_cover,
-                        request.download_lyrics,
-                        &song,
+                        DownloadSongRequest {
+                            directory: &directory,
+                            source: request.source,
+                            bitrate: request.bitrate,
+                            embed_cover: request.embed_cover,
+                            download_lyrics: request.download_lyrics,
+                            song: &song,
+                        },
                         &cancel,
                         &progress,
                     )
@@ -618,15 +629,18 @@ impl MusicDownloadService {
 
     async fn download_song(
         &self,
-        directory: &Path,
-        source: GdSource,
-        bitrate: u16,
-        embed_cover: bool,
-        download_lyrics: bool,
-        song: &ProbeSong,
+        request: DownloadSongRequest<'_>,
         cancel: &CancellationToken,
         progress: &SongProgress<'_>,
     ) -> Result<DownloadedFile, DownloadFailure> {
+        let DownloadSongRequest {
+            directory,
+            source,
+            bitrate,
+            embed_cover,
+            download_lyrics,
+            song,
+        } = request;
         if cancel.is_cancelled() {
             return Err(DownloadFailure::Cancelled);
         }

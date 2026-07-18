@@ -226,8 +226,10 @@
   }
 
   function mergeDownloadResult(value: DownloadBatchResult) {
-    const merged = new Map(downloadItems);
-    for (const item of value.items) merged.set(item.songId, item);
+    const merged = new Map([
+      ...downloadItems,
+      ...value.items.map((item) => [item.songId, item] as const),
+    ]);
     downloadItems = merged;
 
     const items = [...merged.values()];
@@ -310,10 +312,10 @@
 
   function toggle(song: Song) {
     if (!song.urlId || downloading) return;
-    const next = new Set(selected);
     const key = keyOf(song);
-    next.has(key) ? next.delete(key) : next.add(key);
-    selected = next;
+    selected = selected.has(key)
+      ? new Set([...selected].filter((value) => value !== key))
+      : new Set([...selected, key]);
   }
 
   function toggleAll() {
@@ -513,7 +515,8 @@
           bind:value={source}
           disabled={searching || downloading}
           onchange={searchSettingChanged}
-          >{#each sources as item}<option value={item[0]}>{item[1]}</option
+          >{#each sources as item (item[0])}<option value={item[0]}
+              >{item[1]}</option
             >{/each}</select
         ></label
       >
@@ -522,7 +525,8 @@
           bind:value={mode}
           disabled={searching || downloading}
           onchange={searchSettingChanged}
-          >{#each modes as item}<option value={item[0]}>{item[1]}</option
+          >{#each modes as item (item[0])}<option value={item[0]}
+              >{item[1]}</option
             >{/each}</select
         ></label
       >
@@ -757,7 +761,9 @@
                     <details class="warnings">
                       <summary>提示 {item.warnings.length}</summary>
                       <div>
-                        {#each item.warnings as warning}<p>{warning}</p>{/each}
+                        {#each item.warnings as warning, index (index)}<p>
+                            {warning}
+                          </p>{/each}
                       </div>
                     </details>
                   {/if}
