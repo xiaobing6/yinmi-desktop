@@ -2,14 +2,12 @@
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { exit } from '@tauri-apps/plugin-process';
-  import type { Component } from 'svelte';
   import { onMount } from 'svelte';
   import SearchPage from './lib/product/SearchPage.svelte';
 
-  const feasibilityMode = import.meta.env.MODE === 'feasibility';
-  let productReady = feasibilityMode;
+  let productReady = false;
   let startupError = '';
-  let starting = !feasibilityMode;
+  let starting = true;
   type StartupStageState = 'pending' | 'working' | 'done' | 'error';
   interface StartupProgress {
     id: string;
@@ -33,15 +31,6 @@
   ];
   let startupStages = freshStages();
   let showStartupDetails = false;
-  let FeasibilityPanel: Component | undefined;
-  if (feasibilityMode) {
-    void import('./lib/feasibility/FeasibilityPanel.svelte').then(
-      ({ default: component }) => {
-        FeasibilityPanel = component;
-      },
-    );
-  }
-
   const errorText = (error: unknown) =>
     typeof error === 'object' && error !== null && 'message' in error
       ? String((error as { message: unknown }).message)
@@ -75,7 +64,6 @@
   }
 
   onMount(() => {
-    if (feasibilityMode) return;
     let disposed = false;
     let detach: (() => void) | undefined;
     void listen<StartupProgress>('app-startup-progress', (event) => {
@@ -99,15 +87,7 @@
   });
 </script>
 
-{#if feasibilityMode}
-  <main class="feasibility">
-    <header>
-      <h1>音觅</h1>
-      <p>第一阶段可行性验证</p>
-    </header>
-    {#if FeasibilityPanel}<FeasibilityPanel />{/if}
-  </main>
-{:else if !productReady}
+{#if !productReady}
   <main class="splash" aria-live="polite" aria-label="正在启动音觅">
     <div class="splash-mark" aria-hidden="true"><i></i><i></i><b></b></div>
     <h1>音觅</h1>
@@ -153,38 +133,6 @@
 {/if}
 
 <style>
-  main.feasibility {
-    display: block;
-    box-sizing: border-box;
-    min-height: 100vh;
-    padding: 28px clamp(18px, 4vw, 56px) 48px;
-    text-align: left;
-  }
-  main.feasibility header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    max-width: 1180px;
-    margin: 0 auto 18px;
-    border-bottom: 1px solid #b8c0c8;
-    padding-bottom: 14px;
-  }
-  main.feasibility h1 {
-    margin: 0;
-    color: #17202a;
-    font-size: 1.35rem;
-    letter-spacing: 0.08em;
-  }
-  main.feasibility p {
-    margin: 0;
-    color: #5a626a;
-    font:
-      0.78rem/1.3 ui-monospace,
-      'Cascadia Code',
-      monospace;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
   main.splash {
     display: grid;
     place-content: center;

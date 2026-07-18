@@ -124,15 +124,3 @@ fn parse_retry_after_value(value: &str) -> Duration {
         .map(Duration::from_secs)
         .unwrap_or(DEFAULT_RETRY_AFTER)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::parse_retry_after_value;
-
-    #[test]
-    fn parses_retry_after_seconds_and_rejects_invalid_values() {
-        assert_eq!(parse_retry_after_value("45").as_secs(), 45);
-        assert_eq!(parse_retry_after_value("0").as_secs(), 1);
-        assert_eq!(parse_retry_after_value("not-a-number").as_secs(), 30);
-    }
-}

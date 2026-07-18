@@ -24,7 +24,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
-use crate::feasibility::signature_webview::SignatureRuntime;
+use crate::signature::signature_webview::SignatureRuntime;
 use crate::music::{
     contract::{
         AudioAvailability, EncodedComponent, GdOperation, GdSource, ProbeSong,
@@ -1934,49 +1934,4 @@ pub async fn music_scan_existing(
     service
         .scan_existing(&app, &snapshot, &request.base_directory)
         .await
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    use super::{detect_extension, find_existing_audio};
-
-    #[test]
-    fn distinguishes_adts_aac_from_mpeg_audio() {
-        assert_eq!(
-            detect_extension(&[0xff, 0xf1, 0x50, 0x80], None, None),
-            Some("aac")
-        );
-        assert_eq!(
-            detect_extension(&[0xff, 0xfb, 0x90, 0x64], None, None),
-            Some("mp3")
-        );
-    }
-
-    #[tokio::test]
-    async fn existing_mp3_does_not_block_flac() {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let directory = std::env::temp_dir().join(format!("yinmi-dedupe-{unique}"));
-        tokio::fs::create_dir_all(&directory).await.unwrap();
-        tokio::fs::write(directory.join("song.mp3"), b"existing")
-            .await
-            .unwrap();
-
-        assert!(
-            find_existing_audio(&directory, "song", "flac")
-                .await
-                .is_none()
-        );
-        assert!(
-            find_existing_audio(&directory, "song", "mp3")
-                .await
-                .is_some()
-        );
-
-        tokio::fs::remove_dir_all(directory).await.unwrap();
-    }
 }

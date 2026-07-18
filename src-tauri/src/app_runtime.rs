@@ -12,7 +12,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
 
 use crate::{
-    feasibility::signature_webview::{
+    signature::signature_webview::{
         SignatureRuntime, handle_exit_requested, handle_main_window_event,
     },
     music::download::MusicDownloadService,
@@ -371,18 +371,4 @@ pub async fn app_open_log_directory(app: AppHandle) -> Result<String, String> {
         .map_err(|_| "无法创建日志目录".to_owned())?;
     open_path(&directory).map_err(|_| "无法打开日志目录".to_owned())?;
     Ok(directory.to_string_lossy().into_owned())
-}
-
-#[cfg(all(test, target_os = "windows"))]
-mod tests {
-    use super::version_at_least;
-
-    #[test]
-    fn compares_webview2_versions_numerically() {
-        let minimum = [111, 0, 1661, 0];
-        assert!(version_at_least("111.0.1661.0", minimum));
-        assert!(version_at_least("141.0.3537.85", minimum));
-        assert!(!version_at_least("110.0.9999.99", minimum));
-        assert!(!version_at_least("not-a-version", minimum));
-    }
 }

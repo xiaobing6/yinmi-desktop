@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use thiserror::Error;
 
-use crate::feasibility::signature_webview::{SignatureError, SignatureRuntime};
+use crate::signature::signature_webview::{SignatureError, SignatureRuntime};
 use crate::music::{
     contract::{
         ContractError, EncodedComponent, GdOperation, GdSource, PaginationDecision,

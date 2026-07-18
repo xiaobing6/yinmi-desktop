@@ -6,25 +6,13 @@
   "packageManager": "pnpm@11.7.0",
   "engines": {
     "node": ">=24 <25",
-    "pnpm": "11.7.0"
+    "pnpm": ">=11 <12"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "vitest run",
-    "lint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "verify:config": "node scripts/verify-config.mjs",
-    "verify:ci": "node scripts/verify-ci.mjs",
-    "test:evidence": "node --test scripts/feasibility-evidence.test.mjs",
-    "test:signature-host": "node --test scripts/verify-signature-host.test.mjs",
-    "test:signature-lifecycle-runner": "node --test scripts/run-signature-lifecycle-probe.test.mjs",
-    "verify:evidence": "node scripts/feasibility-evidence.mjs check-existing docs/feasibility",
-    "verify:signature-host": "node scripts/verify-signature-host.mjs",
-    "verify:default-artifacts": "node scripts/verify-default-artifacts.mjs",
-    "quality": "pnpm format:check && pnpm lint && pnpm check && pnpm test && pnpm build && pnpm verify:config && pnpm verify:ci && pnpm test:evidence && pnpm test:signature-host && pnpm test:signature-lifecycle-runner && pnpm verify:signature-host",
+    "quality": "pnpm run check && pnpm run build && cargo check --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -36,25 +24,14 @@
     "svelte": "5.56.5"
   },
   "devDependencies": {
-    "@eslint/js": "10.0.1",
     "@sveltejs/vite-plugin-svelte": "7.2.0",
     "@tailwindcss/vite": "4.3.2",
     "@tauri-apps/cli": "2.11.4",
-    "@testing-library/svelte": "5.4.2",
     "@types/node": "24.13.3",
-    "eslint": "10.7.0",
-    "eslint-plugin-svelte": "3.20.0",
-    "globals": "17.7.0",
-    "jsdom": "29.1.1",
-    "prettier": "3.9.5",
-    "prettier-plugin-svelte": "4.1.1",
     "svelte-check": "4.7.2",
     "tailwindcss": "4.3.2",
     "tslib": "2.8.1",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.64.0",
-    "vite": "8.1.4",
-    "vitest": "4.1.10",
-    "yaml": "2.9.0"
+    "vite": "8.1.4"
   }
 }

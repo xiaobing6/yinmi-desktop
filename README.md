@@ -55,7 +55,7 @@ pnpm tauri dev
 常用命令：
 
 ```powershell
-pnpm quality
+pnpm run quality
 pnpm tauri build
 ```
 

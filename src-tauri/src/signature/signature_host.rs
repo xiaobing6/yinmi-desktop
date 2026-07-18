@@ -2,13 +2,13 @@
 
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use std::{cell::RefCell, mem};
 
 use super::{
     signature_webview::{
-        GD_PAGE_URL, SCENARIO_SIGN_CALLBACK_DELAY, SIGNATURE_HOST_WINDOW_LABEL, SignatureError,
+        GD_PAGE_URL, SIGNATURE_HOST_WINDOW_LABEL, SignatureError,
     },
     webview_resource_policy::{IsolationCounters, ResourcePolicyMetadata},
 };
@@ -17,7 +17,7 @@ use url::Url;
 
 #[cfg(any(windows, target_os = "macos"))]
 use super::signature_webview::{
-    NavigationGate, SCENARIO_INIT_CALLBACK_DELAY, SIGNATURE_WEBVIEW_ID,
+    NavigationGate, SIGNATURE_WEBVIEW_ID,
 };
 #[cfg(any(windows, target_os = "macos"))]
 use super::webview_resource_policy::ResourcePolicyGuard;
@@ -28,17 +28,6 @@ use super::webview_resource_policy::{
 };
 
 static RAW_SIGNATURE_SLOT_ACTIVE: AtomicBool = AtomicBool::new(false);
-static LAST_ISOLATED_DELAYED_CALLBACK_GENERATION: AtomicU64 = AtomicU64::new(0);
-
-pub(crate) const SCENARIO_STAGE_PENDING_POLICY: u8 = 1;
-
-pub(crate) fn last_isolated_delayed_callback_generation() -> u64 {
-    LAST_ISOLATED_DELAYED_CALLBACK_GENERATION.load(Ordering::Acquire)
-}
-
-fn mark_isolated_delayed_callback(generation: u64) {
-    LAST_ISOLATED_DELAYED_CALLBACK_GENERATION.store(generation, Ordering::Release);
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HostArrivalDecision {
@@ -55,18 +44,6 @@ pub(crate) enum TeardownAuditEvent {
     TeardownComplete,
 }
 
-impl TeardownAuditEvent {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::NativeDestroyed => "native-destroyed",
-            Self::ManagerHostAbsent => "manager-host-absent",
-            Self::PolicyCleanupAcknowledged => "policy-cleanup-acknowledged",
-            Self::PolicyTombstonesEmpty => "policy-tombstones-empty",
-            Self::TeardownComplete => "teardown-complete",
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct GenerationTeardownAudit {
     pub(crate) generation: u64,
@@ -76,14 +53,6 @@ pub(crate) struct GenerationTeardownAudit {
 }
 
 impl GenerationTeardownAudit {
-    pub(crate) fn ordered_event_names(&self) -> Vec<&'static str> {
-        self.ordered_events
-            .iter()
-            .copied()
-            .map(TeardownAuditEvent::as_str)
-            .collect()
-    }
-
     pub(crate) fn is_complete_and_unique(&self) -> bool {
         let unique = self
             .ordered_events
@@ -102,9 +71,6 @@ pub(crate) struct CreationTicket {
     pub(crate) operation_id: u64,
     host_label: String,
     cancelled: AtomicBool,
-    cancelled_notify: tokio::sync::Notify,
-    scenario_stage: AtomicU8,
-    scenario_stage_notify: tokio::sync::Notify,
     native_destroyed: AtomicBool,
     native_destroyed_notify: tokio::sync::Notify,
     manager_absent: AtomicBool,
@@ -125,9 +91,6 @@ impl CreationTicket {
             operation_id,
             host_label: format!("{SIGNATURE_HOST_WINDOW_LABEL}-{generation}-{operation_id}"),
             cancelled: AtomicBool::new(false),
-            cancelled_notify: tokio::sync::Notify::new(),
-            scenario_stage: AtomicU8::new(0),
-            scenario_stage_notify: tokio::sync::Notify::new(),
             native_destroyed: AtomicBool::new(false),
             native_destroyed_notify: tokio::sync::Notify::new(),
             manager_absent: AtomicBool::new(false),
@@ -147,38 +110,11 @@ impl CreationTicket {
     }
 
     pub(crate) fn cancel(&self) {
-        if !self.cancelled.swap(true, Ordering::AcqRel) {
-            self.cancelled_notify.notify_waiters();
-        }
+        self.cancelled.store(true, Ordering::Release);
     }
 
     pub(crate) fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::Acquire)
-    }
-
-    pub(crate) fn mark_scenario_stage(&self, stage: u8) {
-        self.scenario_stage.store(stage, Ordering::Release);
-        self.scenario_stage_notify.notify_waiters();
-    }
-
-    pub(crate) async fn wait_scenario_stage(&self, stage: u8) {
-        loop {
-            let notified = self.scenario_stage_notify.notified();
-            if self.scenario_stage.load(Ordering::Acquire) >= stage {
-                return;
-            }
-            notified.await;
-        }
-    }
-
-    pub(crate) async fn wait_cancelled(&self) {
-        loop {
-            let notified = self.cancelled_notify.notified();
-            if self.is_cancelled() {
-                return;
-            }
-            notified.await;
-        }
     }
 
     pub(crate) fn host_arrival_decision(&self) -> HostArrivalDecision {
@@ -320,12 +256,6 @@ pub(crate) struct OperationTicket {
     cancelled: AtomicBool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum EvaluationPurpose {
-    Probe,
-    Signature,
-}
-
 impl OperationTicket {
     pub(crate) fn new(generation: u64, operation_id: u64) -> Arc<Self> {
         Arc::new(Self {
@@ -346,92 +276,25 @@ impl OperationTicket {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RawResourcePolicyProfile {
-    Live,
-    Counterfactual,
-    ProtectedCanary,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) enum ScenarioFault {
-    #[default]
-    None,
-    PolicyRegistrationFailure,
-    InitializationFinishedDelay,
-    SignCallbackDelay,
-    HoldBeforePolicyRegistration,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RawHostProfile {
     pub(crate) navigation_url: String,
-    pub(crate) resource_policy: RawResourcePolicyProfile,
-    pub(crate) scenario_fault: ScenarioFault,
 }
 
 impl RawHostProfile {
     pub(crate) fn live() -> Self {
         Self {
             navigation_url: GD_PAGE_URL.into(),
-            resource_policy: RawResourcePolicyProfile::Live,
-            scenario_fault: ScenarioFault::None,
         }
-    }
-
-    pub(crate) fn controlled(
-        navigation_url: String,
-        resource_policy: RawResourcePolicyProfile,
-    ) -> Result<Self, SignatureError> {
-        if resource_policy == RawResourcePolicyProfile::Live {
-            return Err(SignatureError::Webview(
-                "controlled actor cannot select the live policy profile".into(),
-            ));
-        }
-        let url = Url::parse(&navigation_url)
-            .map_err(|_| SignatureError::Webview("invalid controlled actor URL".into()))?;
-        if url.scheme() != "https"
-            || url.host_str() != Some("127.0.0.1")
-            || url.port().is_none()
-            || url.path() != "/"
-            || url.query().is_some()
-            || url.fragment().is_some()
-            || !url.username().is_empty()
-            || url.password().is_some()
-        {
-            return Err(SignatureError::Webview(
-                "controlled actor URL must be an exact HTTPS IPv4 loopback origin".into(),
-            ));
-        }
-        Ok(Self {
-            navigation_url,
-            resource_policy,
-            scenario_fault: ScenarioFault::None,
-        })
-    }
-
-    pub(crate) fn with_scenario_fault(mut self, scenario_fault: ScenarioFault) -> Self {
-        self.scenario_fault = scenario_fault;
-        self
     }
 
     pub(crate) fn allows_navigation(&self, url: &Url) -> bool {
-        match self.resource_policy {
-            RawResourcePolicyProfile::Live => {
-                super::signature_webview::is_allowed_gd_navigation(url)
-            }
-            RawResourcePolicyProfile::Counterfactual
-            | RawResourcePolicyProfile::ProtectedCanary => Url::parse(&self.navigation_url)
-                .is_ok_and(|origin| {
-                    super::webview_resource_policy::is_allowed_network_request_for(&origin, url)
-                }),
-        }
+        super::signature_webview::is_allowed_gd_navigation(url)
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RawWebViewBuilderSpec {
-    pub(crate) id: &'static str,
     pub(crate) initial_url: &'static str,
     pub(crate) visible: bool,
     pub(crate) focused: bool,
@@ -439,25 +302,14 @@ pub(crate) struct RawWebViewBuilderSpec {
     pub(crate) incognito: bool,
     pub(crate) clipboard: bool,
     pub(crate) autofill: bool,
-    pub(crate) deny_new_windows: bool,
-    pub(crate) deny_downloads: bool,
     pub(crate) generation: u64,
     pub(crate) operation_id: u64,
-    pub(crate) initialization_script_count: usize,
-    pub(crate) application_ipc_handler: bool,
-    pub(crate) custom_protocol: bool,
     pub(crate) profile: RawHostProfile,
 }
 
 impl RawWebViewBuilderSpec {
-    #[cfg(test)]
-    pub(crate) fn new(generation: u64, operation_id: u64) -> Self {
-        Self::for_profile(generation, operation_id, RawHostProfile::live())
-    }
-
     pub(crate) fn for_profile(generation: u64, operation_id: u64, profile: RawHostProfile) -> Self {
         Self {
-            id: super::signature_webview::SIGNATURE_WEBVIEW_ID,
             initial_url: "about:blank",
             visible: false,
             focused: false,
@@ -465,13 +317,8 @@ impl RawWebViewBuilderSpec {
             incognito: true,
             clipboard: false,
             autofill: false,
-            deny_new_windows: true,
-            deny_downloads: true,
             generation,
             operation_id,
-            initialization_script_count: 0,
-            application_ipc_handler: false,
-            custom_protocol: false,
             profile,
         }
     }
@@ -495,43 +342,6 @@ pub(crate) struct UiCreationTrace {
 }
 
 impl UiCreationTrace {
-    #[cfg(test)]
-    const SUCCESS_STEPS: [CreationStep; 6] = [
-        CreationStep::PendingInserted,
-        CreationStep::RawChildBuilt,
-        CreationStep::NativeInterfacesFound,
-        CreationStep::PolicyInstalled,
-        CreationStep::ReadyTransition,
-        CreationStep::NetworkNavigation,
-    ];
-
-    #[cfg(test)]
-    pub(crate) fn run_with_cancellation(cancelled_after: CreationStep) -> Self {
-        let mut steps = Vec::new();
-        for step in Self::SUCCESS_STEPS {
-            steps.push(step);
-            if step == cancelled_after {
-                steps.push(CreationStep::DestroyRequested);
-                return Self {
-                    steps,
-                    cancelled: true,
-                };
-            }
-        }
-        Self {
-            steps,
-            cancelled: false,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn run_successfully() -> Self {
-        Self {
-            steps: Self::SUCCESS_STEPS.to_vec(),
-            cancelled: false,
-        }
-    }
-
     pub(crate) fn new() -> Self {
         Self {
             steps: Vec::new(),
@@ -548,23 +358,6 @@ impl UiCreationTrace {
         self.record(CreationStep::DestroyRequested);
     }
 
-    #[cfg(test)]
-    pub(crate) fn steps(&self) -> &[CreationStep] {
-        &self.steps
-    }
-
-    #[cfg(test)]
-    pub(crate) fn position(&self, step: CreationStep) -> usize {
-        self.steps
-            .iter()
-            .position(|candidate| *candidate == step)
-            .unwrap_or(usize::MAX)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn was_cancelled(&self) -> bool {
-        self.cancelled
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -574,29 +367,6 @@ pub(crate) enum ActorPhase {
     Pending,
     Ready,
     Destroying,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) enum InitGate {
-    #[default]
-    WaitingForPolicy,
-    WaitingForOfficialFinished,
-    #[cfg(test)]
-    OfficialFinishedAfterPolicy,
-}
-
-impl InitGate {
-    #[cfg(test)]
-    pub(crate) fn may_poll(self) -> bool {
-        self == Self::OfficialFinishedAfterPolicy
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct HostCounts {
-    pub(crate) registry_slots: u64,
-    pub(crate) native_hosts: u64,
-    pub(crate) browser_processes: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -615,14 +385,11 @@ pub(crate) enum TeardownEvent {
 #[derive(Debug, Default)]
 pub(crate) struct ActorModel {
     phase: ActorPhase,
-    init_gate: InitGate,
     generation: u64,
     operation_id: u64,
     cancelled: bool,
     native_destroyed: bool,
     policy_cleanup: bool,
-    counts: HostCounts,
-    composite_teardown_count: u64,
 }
 
 impl ActorModel {
@@ -635,32 +402,16 @@ impl ActorModel {
             return Err("signature slot is not empty");
         }
         self.phase = ActorPhase::Pending;
-        self.init_gate = InitGate::WaitingForPolicy;
         self.generation = generation;
         self.operation_id = operation_id;
         self.cancelled = false;
         self.native_destroyed = false;
         self.policy_cleanup = false;
-        self.counts = HostCounts {
-            registry_slots: 1,
-            native_hosts: 1,
-            browser_processes: 1,
-        };
         Ok(ActorTicket {
             generation,
             operation_id,
             host_label: format!("{SIGNATURE_HOST_WINDOW_LABEL}-{generation}-{operation_id}"),
         })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn phase(&self) -> ActorPhase {
-        self.phase
-    }
-
-    #[cfg(test)]
-    pub(crate) fn init_gate(&self) -> InitGate {
-        self.init_gate
     }
 
     pub(crate) fn policy_ready(
@@ -675,21 +426,7 @@ impl ActorModel {
         if self.phase != ActorPhase::Pending {
             return Err("policy acknowledgement requires pending slot");
         }
-        self.init_gate = InitGate::WaitingForOfficialFinished;
         Ok(true)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn record_page_finished(&mut self, url: &str) -> bool {
-        if self.phase != ActorPhase::Pending
-            || self.cancelled
-            || self.init_gate != InitGate::WaitingForOfficialFinished
-            || url != GD_PAGE_URL
-        {
-            return false;
-        }
-        self.init_gate = InitGate::OfficialFinishedAfterPolicy;
-        true
     }
 
     pub(crate) fn mark_ready(
@@ -703,26 +440,6 @@ impl ActorModel {
         }
         self.phase = ActorPhase::Ready;
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn cancel(
-        &mut self,
-        generation: u64,
-        operation_id: u64,
-    ) -> Result<(), &'static str> {
-        self.require_current(generation, operation_id)?;
-        self.cancelled = true;
-        self.phase = ActorPhase::Destroying;
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn accepts_callback(&self, generation: u64, operation_id: u64) -> bool {
-        self.generation == generation
-            && self.operation_id == operation_id
-            && !self.cancelled
-            && matches!(self.phase, ActorPhase::Pending | ActorPhase::Ready)
     }
 
     pub(crate) fn request_destroy(
@@ -761,20 +478,8 @@ impl ActorModel {
         }
         if self.native_destroyed && self.policy_cleanup {
             self.phase = ActorPhase::Empty;
-            self.counts = HostCounts::default();
-            self.composite_teardown_count += 1;
         }
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn host_counts(&self) -> HostCounts {
-        self.counts
-    }
-
-    #[cfg(test)]
-    pub(crate) fn composite_teardown_count(&self) -> u64 {
-        self.composite_teardown_count
     }
 
     fn require_current(&self, generation: u64, operation_id: u64) -> Result<(), &'static str> {
@@ -808,25 +513,12 @@ pub(crate) struct HostInitialization {
     pub(crate) policy: ResourcePolicyMetadata,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct RawHostProbeSnapshot {
-    pub(crate) generation: u64,
-    pub(crate) operation_id: u64,
-    pub(crate) host_label: String,
-    pub(crate) managed_webviews_empty: bool,
-    pub(crate) counters: super::webview_resource_policy::IsolationCounterSnapshot,
-}
-
 thread_local! {
     static RAW_SIGNATURE_SLOT: RefCell<MainThreadSignatureSlot> =
         const { RefCell::new(MainThreadSignatureSlot::Empty) };
     static UI_ACTOR_MODEL: RefCell<ActorModel> = RefCell::new(ActorModel::default());
 }
 
-#[cfg_attr(
-    not(any(windows, target_os = "macos")),
-    allow(clippy::large_enum_variant)
-)]
 enum MainThreadSignatureSlot {
     Empty,
     Pending(PendingMainThreadSignatureInstance),
@@ -857,13 +549,13 @@ struct MainThreadSignatureInstance {
     counters: Arc<IsolationCounters>,
     ticket: Arc<CreationTicket>,
     trace: UiCreationTrace,
-    scenario_fault: ScenarioFault,
 }
 
 enum ActiveResourcePolicy {
     #[cfg(any(windows, target_os = "macos"))]
     Protected(ResourcePolicyGuard),
-    Counterfactual(ResourcePolicyMetadata),
+    #[cfg(not(any(windows, target_os = "macos")))]
+    Unsupported(ResourcePolicyMetadata),
 }
 
 impl ActiveResourcePolicy {
@@ -871,27 +563,22 @@ impl ActiveResourcePolicy {
         match self {
             #[cfg(any(windows, target_os = "macos"))]
             Self::Protected(policy) => policy.metadata(),
-            Self::Counterfactual(metadata) => metadata,
+            #[cfg(not(any(windows, target_os = "macos")))]
+            Self::Unsupported(metadata) => metadata,
         }
     }
 
     #[cfg(windows)]
     fn uninstall(&mut self) -> Result<bool, SignatureError> {
-        match self {
-            Self::Protected(policy) => {
-                policy.uninstall()?;
-                Ok(true)
-            }
-            Self::Counterfactual(_) => Ok(true),
-        }
+        let Self::Protected(policy) = self;
+        policy.uninstall()?;
+        Ok(true)
     }
 
     #[cfg(target_os = "macos")]
     fn into_late_owner_on_ui(self) -> Result<Option<LateMacPolicyOwner>, SignatureError> {
-        match self {
-            Self::Protected(policy) => policy.into_late_owner_on_ui().map(Some),
-            Self::Counterfactual(_) => Ok(None),
-        }
+        let Self::Protected(policy) = self;
+        policy.into_late_owner_on_ui().map(Some)
     }
 }
 
@@ -1031,14 +718,6 @@ async fn handoff_host_to_ui(
     builder_spec: RawWebViewBuilderSpec,
     events: tokio::sync::mpsc::UnboundedSender<HostEvent>,
 ) -> Result<HostInitialization, SignatureError> {
-    if builder_spec.profile.scenario_fault == ScenarioFault::HoldBeforePolicyRegistration {
-        ticket.mark_scenario_stage(SCENARIO_STAGE_PENDING_POLICY);
-        ticket.wait_cancelled().await;
-        ticket.mark_policy_cleanup();
-        ticket.mark_tombstones_empty();
-        let _ = host.destroy();
-        return Err(SignatureError::Cancelled);
-    }
     let (sender, receiver) = tokio::sync::oneshot::channel();
     let fallback_host = host.clone();
     let dispatch_result = app.run_on_main_thread(move || {
@@ -1083,14 +762,6 @@ async fn handoff_host_to_ui(
     builder_spec: RawWebViewBuilderSpec,
     events: tokio::sync::mpsc::UnboundedSender<HostEvent>,
 ) -> Result<HostInitialization, SignatureError> {
-    if builder_spec.profile.scenario_fault == ScenarioFault::HoldBeforePolicyRegistration {
-        ticket.mark_scenario_stage(SCENARIO_STAGE_PENDING_POLICY);
-        ticket.wait_cancelled().await;
-        ticket.mark_policy_cleanup();
-        ticket.mark_tombstones_empty();
-        let _ = host.destroy();
-        return Err(SignatureError::Cancelled);
-    }
     let (sender, receiver) = tokio::sync::oneshot::channel();
     let fallback_host = host.clone();
     let ui_app = app.clone();
@@ -1190,8 +861,6 @@ fn install_raw_child_on_ui(
     let download_counters = Arc::clone(&counters);
     let page_events = events.clone();
     let page_ticket = Arc::clone(&ticket);
-    let delay_page_finished =
-        builder_spec.profile.scenario_fault == ScenarioFault::InitializationFinishedDelay;
 
     use wry::WebViewBuilderExtWindows;
     let builder = wry::WebViewBuilder::new()
@@ -1223,18 +892,7 @@ fn install_raw_child_on_ui(
             if matches!(event, wry::PageLoadEvent::Finished) {
                 let callback_ticket = Arc::clone(&page_ticket);
                 let callback_events = page_events.clone();
-                if delay_page_finished {
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(SCENARIO_INIT_CALLBACK_DELAY).await;
-                        if !callback_ticket.is_cancelled() {
-                            let _ = callback_events.send(HostEvent::PageFinished {
-                                generation,
-                                operation_id,
-                                url,
-                            });
-                        }
-                    });
-                } else if !callback_ticket.is_cancelled() {
+                if !callback_ticket.is_cancelled() {
                     let _ = callback_events.send(HostEvent::PageFinished {
                         generation,
                         operation_id,
@@ -1262,25 +920,7 @@ fn install_raw_child_on_ui(
         begin_destroy_without_webview(host, Arc::clone(&ticket), &mut trace);
         return Err(SignatureError::Cancelled);
     }
-    if builder_spec.profile.scenario_fault == ScenarioFault::PolicyRegistrationFailure {
-        drop(webview);
-        begin_destroy_without_webview(host, Arc::clone(&ticket), &mut trace);
-        return Err(SignatureError::Webview(
-            "injected policy registration failure".into(),
-        ));
-    }
-
-    let policy = if builder_spec.profile.resource_policy == RawResourcePolicyProfile::Counterfactual
-    {
-        match super::webview_resource_policy::windows::counterfactual_metadata(&webview) {
-            Ok(metadata) => ActiveResourcePolicy::Counterfactual(metadata),
-            Err(error) => {
-                drop(webview);
-                begin_destroy_without_webview(host, Arc::clone(&ticket), &mut trace);
-                return Err(error);
-            }
-        }
-    } else {
+    let policy = {
         policy_build.synchronous_registration_started = true;
         debug_assert!(policy_build.synchronous_registration_started);
         let fault_events = events.clone();
@@ -1345,7 +985,6 @@ fn install_raw_child_on_ui(
             counters,
             ticket: Arc::clone(&ticket),
             trace,
-            scenario_fault: builder_spec.profile.scenario_fault,
         });
     });
     UI_ACTOR_MODEL.with(|actor| {
@@ -1427,49 +1066,6 @@ fn install_raw_child_on_ui(
     }
     if ticket.is_cancelled() {
         let _ = destroy_generation_on_ui(&ticket);
-        return;
-    }
-
-    let inject_policy_failure = RAW_SIGNATURE_SLOT.with(|slot| {
-        matches!(
-            &*slot.borrow(),
-            MainThreadSignatureSlot::Pending(pending)
-                if pending.generation == ticket.generation
-                    && pending.operation_id == ticket.operation_id
-                    && pending.builder_spec.profile.scenario_fault
-                        == ScenarioFault::PolicyRegistrationFailure
-        )
-    });
-    if inject_policy_failure {
-        fail_macos_pending_on_ui(
-            ticket.generation,
-            ticket.operation_id,
-            SignatureError::Webview("injected policy registration failure".into()),
-        );
-        return;
-    }
-
-    if RAW_SIGNATURE_SLOT.with(|slot| {
-        matches!(
-            &*slot.borrow(),
-            MainThreadSignatureSlot::Pending(pending)
-                if pending.generation == ticket.generation
-                    && pending.operation_id == ticket.operation_id
-                    && pending.builder_spec.profile.resource_policy
-                        == RawResourcePolicyProfile::Counterfactual
-        )
-    }) {
-        let active = RAW_SIGNATURE_SLOT
-            .with(|slot| mem::replace(&mut *slot.borrow_mut(), MainThreadSignatureSlot::Empty));
-        match active {
-            MainThreadSignatureSlot::Pending(pending)
-                if pending.generation == ticket.generation
-                    && pending.operation_id == ticket.operation_id =>
-            {
-                finish_macos_counterfactual_on_ui(pending);
-            }
-            other => RAW_SIGNATURE_SLOT.with(|slot| *slot.borrow_mut() = other),
-        }
         return;
     }
 
@@ -1713,38 +1309,6 @@ fn finish_macos_raw_child_on_ui(
 }
 
 #[cfg(target_os = "macos")]
-fn finish_macos_counterfactual_on_ui(mut pending: PendingMainThreadSignatureInstance) {
-    let generation = pending.generation;
-    let operation_id = pending.operation_id;
-    let (configuration, metadata) =
-        match super::webview_resource_policy::macos::counterfactual_configuration() {
-            Ok(configuration) => configuration,
-            Err(error) => {
-                let _ = transition_macos_pending_to_destroying(pending, error, true);
-                return;
-            }
-        };
-    pending.trace.record(CreationStep::PolicyInstalled);
-    let (webview, counters, builder_spec) =
-        match build_macos_raw_child_on_ui(&mut pending, configuration) {
-            Ok(built) => built,
-            Err(error) => {
-                let _ = transition_macos_pending_to_destroying(pending, error, true);
-                return;
-            }
-        };
-    debug_assert_eq!(pending.generation, generation);
-    debug_assert_eq!(pending.operation_id, operation_id);
-    activate_macos_raw_child_on_ui(
-        pending,
-        webview,
-        ActiveResourcePolicy::Counterfactual(metadata),
-        counters,
-        builder_spec,
-    );
-}
-
-#[cfg(target_os = "macos")]
 fn build_macos_raw_child_on_ui(
     pending: &mut PendingMainThreadSignatureInstance,
     configuration: objc2::rc::Retained<objc2_web_kit::WKWebViewConfiguration>,
@@ -1762,8 +1326,6 @@ fn build_macos_raw_child_on_ui(
     let download_counters = Arc::clone(&counters);
     let page_events = pending.events.clone();
     let page_ticket = Arc::clone(&pending.ticket);
-    let delay_page_finished =
-        builder_spec.profile.scenario_fault == ScenarioFault::InitializationFinishedDelay;
     let builder = wry::WebViewBuilder::new()
         .with_id(SIGNATURE_WEBVIEW_ID)
         .with_url(builder_spec.initial_url)
@@ -1792,18 +1354,7 @@ fn build_macos_raw_child_on_ui(
             if matches!(event, wry::PageLoadEvent::Finished) {
                 let callback_ticket = Arc::clone(&page_ticket);
                 let callback_events = page_events.clone();
-                if delay_page_finished {
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(SCENARIO_INIT_CALLBACK_DELAY).await;
-                        if !callback_ticket.is_cancelled() {
-                            let _ = callback_events.send(HostEvent::PageFinished {
-                                generation,
-                                operation_id,
-                                url,
-                            });
-                        }
-                    });
-                } else if !callback_ticket.is_cancelled() {
+                if !callback_ticket.is_cancelled() {
                     let _ = callback_events.send(HostEvent::PageFinished {
                         generation,
                         operation_id,
@@ -1867,7 +1418,6 @@ fn activate_macos_raw_child_on_ui(
             counters,
             ticket: Arc::clone(&pending.ticket),
             trace: pending.trace,
-            scenario_fault: builder_spec.profile.scenario_fault,
         });
     });
     if pending.ticket.is_cancelled() {
@@ -2158,7 +1708,6 @@ pub(crate) async fn evaluate_raw_signature_host(
     app: &tauri::AppHandle<tauri::Wry>,
     ticket: Arc<CreationTicket>,
     operation: Arc<OperationTicket>,
-    purpose: EvaluationPurpose,
     script: String,
 ) -> Result<String, SignatureError> {
     let (schedule_sender, schedule_receiver) = tokio::sync::oneshot::channel();
@@ -2177,29 +1726,10 @@ pub(crate) async fn evaluate_raw_signature_host(
             if instance.generation != generation || instance.ticket.is_cancelled() {
                 return Err(SignatureError::StaleCallback);
             }
-            let delay_signature_callback = purpose == EvaluationPurpose::Signature
-                && instance.scenario_fault == ScenarioFault::SignCallbackDelay;
             instance
                 .webview
                 .evaluate_script_with_callback(&script, move |raw| {
-                    if delay_signature_callback {
-                        let delayed_operation = Arc::clone(&callback_operation);
-                        let delayed_sender = Arc::clone(&callback_sender);
-                        tauri::async_runtime::spawn(async move {
-                            tokio::time::sleep(SCENARIO_SIGN_CALLBACK_DELAY).await;
-                            if !delayed_operation.accepts(generation, operation_id) {
-                                mark_isolated_delayed_callback(generation);
-                                return;
-                            }
-                            if let Some(sender) = delayed_sender
-                                .lock()
-                                .expect("raw signature result mutex poisoned")
-                                .take()
-                            {
-                                let _ = sender.send(raw);
-                            }
-                        });
-                    } else if callback_operation.accepts(generation, operation_id)
+                    if callback_operation.accepts(generation, operation_id)
                         && let Some(sender) = callback_sender
                             .lock()
                             .expect("raw signature result mutex poisoned")
@@ -2247,38 +1777,6 @@ pub(crate) async fn current_raw_signature_url(
     receiver
         .await
         .map_err(|_| SignatureError::Webview("signature URL callback stopped".into()))?
-}
-
-pub(crate) async fn raw_signature_host_probe_snapshot(
-    app: &tauri::AppHandle<tauri::Wry>,
-    ticket: Arc<CreationTicket>,
-) -> Result<RawHostProbeSnapshot, SignatureError> {
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    app.run_on_main_thread(move || {
-        let result = RAW_SIGNATURE_SLOT.with(|slot| {
-            let slot = slot.borrow();
-            let MainThreadSignatureSlot::Ready(instance) = &*slot else {
-                return Err(SignatureError::NotReady);
-            };
-            if instance.generation != ticket.generation
-                || instance.operation_id != ticket.operation_id
-            {
-                return Err(SignatureError::StaleCallback);
-            }
-            Ok(RawHostProbeSnapshot {
-                generation: instance.generation,
-                operation_id: instance.operation_id,
-                host_label: instance.ticket.host_label().to_string(),
-                managed_webviews_empty: instance.host.webviews().is_empty(),
-                counters: instance.counters.snapshot(),
-            })
-        });
-        let _ = sender.send(result);
-    })
-    .map_err(|_| SignatureError::Webview("signature snapshot dispatch failed".into()))?;
-    receiver
-        .await
-        .map_err(|_| SignatureError::Webview("signature snapshot callback stopped".into()))?
 }
 
 pub(crate) async fn destroy_raw_signature_host(
@@ -2693,275 +2191,5 @@ pub(crate) fn final_exit_drop() {
             drop(previous);
         });
         RAW_SIGNATURE_SLOT_ACTIVE.store(false, Ordering::Release);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use super::{
-        ActorModel, ActorPhase, CreationStep, CreationTicket, HostArrivalDecision, HostCounts,
-        InitGate, OperationTicket, RawHostProfile, RawResourcePolicyProfile, RawWebViewBuilderSpec,
-        TeardownEvent, UiCreationTrace, macos_final_exit_decision,
-    };
-
-    #[test]
-    fn signature_webview_macos_abnormal_final_exit_attempts_cleanup_without_false_ack() {
-        let safe = macos_final_exit_decision(true, true, true, true);
-        assert!(!safe.retain_owner);
-        assert!(safe.clear_active);
-
-        for (on_main, slot_empty, tombstones_empty, callbacks_clean) in [
-            (false, true, true, true),
-            (true, false, true, true),
-            (true, true, false, true),
-            (true, true, true, false),
-        ] {
-            let unsafe_exit =
-                macos_final_exit_decision(on_main, slot_empty, tombstones_empty, callbacks_clean);
-            assert_eq!(unsafe_exit.retain_owner, !slot_empty);
-            assert!(!unsafe_exit.clear_active);
-        }
-    }
-
-    #[test]
-    fn signature_webview_feature_profile_is_explicit_and_cannot_replace_live_defaults() {
-        let live = RawHostProfile::live();
-        assert_eq!(live.navigation_url, super::GD_PAGE_URL);
-        assert_eq!(live.resource_policy, RawResourcePolicyProfile::Live);
-
-        let controlled = RawHostProfile::controlled(
-            "https://127.0.0.1:50001/".into(),
-            RawResourcePolicyProfile::Counterfactual,
-        )
-        .unwrap();
-        assert_eq!(controlled.navigation_url, "https://127.0.0.1:50001/");
-        assert_eq!(
-            controlled.resource_policy,
-            RawResourcePolicyProfile::Counterfactual
-        );
-        assert!(
-            RawHostProfile::controlled(
-                "https://music.gdstudio.xyz/".into(),
-                RawResourcePolicyProfile::ProtectedCanary,
-            )
-            .is_err()
-        );
-        assert!(
-            RawHostProfile::controlled(
-                "http://127.0.0.1:50001/".into(),
-                RawResourcePolicyProfile::ProtectedCanary,
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn signature_webview_actor_requires_policy_and_official_finish_before_polling() {
-        let mut actor = ActorModel::default();
-        actor.begin(7, 11).unwrap();
-
-        assert_eq!(actor.phase(), ActorPhase::Pending);
-        assert!(!actor.init_gate().may_poll());
-        assert!(!actor.record_page_finished("about:blank"));
-        assert!(!actor.record_page_finished("https://music.gdstudio.xyz/"));
-
-        actor.policy_ready(7, 11).unwrap();
-        assert!(!actor.init_gate().may_poll());
-        assert!(actor.record_page_finished("https://music.gdstudio.xyz/"));
-        assert!(actor.init_gate().may_poll());
-        assert_eq!(actor.init_gate(), InitGate::OfficialFinishedAfterPolicy);
-    }
-
-    #[test]
-    fn signature_webview_actor_cancellation_and_late_callbacks_are_generation_isolated() {
-        let mut actor = ActorModel::default();
-        let first = actor.begin(1, 1).unwrap();
-        assert_eq!(first.host_label, "gd-signature-host-feasibility-1-1");
-        actor.cancel(1, 1).unwrap();
-        assert_eq!(actor.phase(), ActorPhase::Destroying);
-        assert!(!actor.policy_ready(1, 1).unwrap());
-        assert!(!actor.accepts_callback(1, 1));
-
-        actor
-            .acknowledge(1, 1, TeardownEvent::NativeDestroyed)
-            .unwrap();
-        assert_eq!(actor.phase(), ActorPhase::Destroying);
-        actor
-            .acknowledge(1, 1, TeardownEvent::PolicyCleanup)
-            .unwrap();
-        assert_eq!(actor.phase(), ActorPhase::Empty);
-
-        let second = actor.begin(2, 2).unwrap();
-        assert_eq!(second.host_label, "gd-signature-host-feasibility-2-2");
-        assert!(!actor.accepts_callback(1, 1));
-        assert!(actor.accepts_callback(2, 2));
-    }
-
-    #[test]
-    fn signature_webview_actor_duplicate_destroy_has_one_composite_ack_and_retry_waits() {
-        let mut actor = ActorModel::default();
-        actor.begin(4, 9).unwrap();
-        actor.policy_ready(4, 9).unwrap();
-        actor.mark_ready(4, 9).unwrap();
-
-        assert!(actor.request_destroy(4, 9).unwrap());
-        assert!(!actor.request_destroy(4, 9).unwrap());
-        assert!(actor.begin(5, 10).is_err());
-
-        actor
-            .acknowledge(4, 9, TeardownEvent::PolicyCleanup)
-            .unwrap();
-        assert_eq!(actor.phase(), ActorPhase::Destroying);
-        actor
-            .acknowledge(4, 9, TeardownEvent::NativeDestroyed)
-            .unwrap();
-        actor
-            .acknowledge(4, 9, TeardownEvent::NativeDestroyed)
-            .unwrap();
-        assert_eq!(actor.phase(), ActorPhase::Empty);
-        assert_eq!(actor.composite_teardown_count(), 1);
-        assert!(actor.begin(5, 10).is_ok());
-    }
-
-    #[test]
-    fn signature_webview_actor_twenty_cycles_return_all_counts_to_baseline() {
-        let mut actor = ActorModel::default();
-        assert_eq!(actor.host_counts(), HostCounts::default());
-
-        for generation in 1..=20 {
-            actor.begin(generation, generation).unwrap();
-            actor.policy_ready(generation, generation).unwrap();
-            actor.mark_ready(generation, generation).unwrap();
-            actor.request_destroy(generation, generation).unwrap();
-            actor
-                .acknowledge(generation, generation, TeardownEvent::NativeDestroyed)
-                .unwrap();
-            actor
-                .acknowledge(generation, generation, TeardownEvent::PolicyCleanup)
-                .unwrap();
-        }
-
-        assert_eq!(actor.phase(), ActorPhase::Empty);
-        assert_eq!(actor.host_counts(), HostCounts::default());
-        assert_eq!(actor.composite_teardown_count(), 20);
-    }
-
-    #[test]
-    fn signature_webview_raw_builder_spec_is_fixed_and_has_no_application_bridge() {
-        let spec = RawWebViewBuilderSpec::new(3, 8);
-        assert_eq!(spec.id, "gd-signature-raw-wry");
-        assert_eq!(spec.initial_url, "about:blank");
-        assert!(!spec.visible);
-        assert!(!spec.focused);
-        assert!(!spec.devtools);
-        assert!(spec.incognito);
-        assert!(!spec.clipboard);
-        assert!(!spec.autofill);
-        assert!(spec.deny_new_windows);
-        assert!(spec.deny_downloads);
-        assert_eq!(spec.generation, 3);
-        assert_eq!(spec.operation_id, 8);
-        assert_eq!(spec.initialization_script_count, 0);
-        assert!(!spec.application_ipc_handler);
-        assert!(!spec.custom_protocol);
-    }
-
-    #[test]
-    fn signature_webview_creation_cancellation_never_reaches_network_navigation() {
-        let ordered = [
-            CreationStep::PendingInserted,
-            CreationStep::RawChildBuilt,
-            CreationStep::NativeInterfacesFound,
-            CreationStep::PolicyInstalled,
-            CreationStep::ReadyTransition,
-        ];
-        for cancelled_after in ordered {
-            let trace = UiCreationTrace::run_with_cancellation(cancelled_after);
-            assert!(trace.steps().contains(&CreationStep::DestroyRequested));
-            assert!(!trace.steps().contains(&CreationStep::NetworkNavigation));
-            assert!(trace.was_cancelled());
-        }
-
-        let success = UiCreationTrace::run_successfully();
-        assert_eq!(
-            success.steps().last(),
-            Some(&CreationStep::NetworkNavigation)
-        );
-        assert!(
-            success.position(CreationStep::PolicyInstalled)
-                < success.position(CreationStep::NetworkNavigation)
-        );
-    }
-
-    #[tokio::test]
-    async fn signature_webview_creation_ticket_has_distinct_native_and_composite_barriers() {
-        let ticket = CreationTicket::new(12, 20);
-        assert_eq!(ticket.host_label(), "gd-signature-host-feasibility-12-20");
-        assert_eq!(
-            ticket.host_arrival_decision(),
-            HostArrivalDecision::BuildRawChild
-        );
-        ticket.cancel();
-        assert_eq!(
-            ticket.host_arrival_decision(),
-            HostArrivalDecision::DestroyWithoutBuilding
-        );
-
-        ticket.mark_native_destroyed();
-        ticket.wait_native_destroyed().await;
-        assert!(!ticket.teardown_complete());
-        ticket.mark_manager_absent();
-        ticket.mark_policy_cleanup();
-        assert!(!ticket.teardown_complete());
-        ticket.mark_tombstones_empty();
-        ticket.wait_teardown_complete().await;
-        assert!(ticket.teardown_complete());
-        assert_eq!(ticket.composite_ack_count(), 1);
-        let audit = ticket.teardown_audit();
-        assert_eq!(audit.generation, 12);
-        assert_eq!(audit.operation_id, 20);
-        assert_eq!(
-            audit.ordered_event_names(),
-            [
-                "native-destroyed",
-                "manager-host-absent",
-                "policy-cleanup-acknowledged",
-                "policy-tombstones-empty",
-                "teardown-complete",
-            ]
-        );
-        assert!(audit.is_complete_and_unique());
-
-        ticket.mark_native_destroyed();
-        ticket.mark_manager_absent();
-        ticket.mark_policy_cleanup();
-        ticket.mark_tombstones_empty();
-        assert_eq!(ticket.composite_ack_count(), 1);
-        assert_eq!(ticket.teardown_audit(), audit);
-    }
-
-    #[tokio::test]
-    async fn signature_webview_teardown_waits_for_the_final_slot_empty_ack() {
-        let ticket = CreationTicket::new(21, 34);
-        let waiter_ticket = Arc::clone(&ticket);
-        let waiter = tokio::spawn(async move {
-            waiter_ticket.wait_slot_empty().await;
-        });
-        tokio::task::yield_now().await;
-        assert!(!waiter.is_finished());
-        ticket.mark_slot_empty();
-        waiter.await.unwrap();
-    }
-
-    #[test]
-    fn signature_webview_operation_ticket_rejects_cancelled_and_stale_callbacks() {
-        let operation = OperationTicket::new(5, 9);
-        assert!(operation.accepts(5, 9));
-        assert!(!operation.accepts(4, 9));
-        assert!(!operation.accepts(5, 10));
-        operation.cancel();
-        assert!(!operation.accepts(5, 9));
     }
 }

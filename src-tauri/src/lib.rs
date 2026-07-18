@@ -1,24 +1,15 @@
-#[cfg(feature = "feasibility")]
 mod app_runtime;
-#[cfg(feature = "feasibility")]
-pub mod feasibility;
+pub mod signature;
 pub mod music;
 
-#[cfg(feature = "feasibility")]
 use app_runtime::{ProductExitState, handle_product_exit_requested, handle_product_window_event};
-#[cfg(feature = "feasibility")]
-use feasibility::signature_webview::{
+use signature::signature_webview::{
     SignatureExitCoordinator, SignatureRuntime, final_exit_cleanup,
 };
-#[cfg(feature = "feasibility")]
 use music::download::MusicDownloadService;
-#[cfg(feature = "feasibility")]
 use music::rate_limiter::MusicRateLimiter;
-#[cfg(feature = "feasibility")]
 use music::search::MusicSearchService;
-#[cfg(feature = "feasibility")]
 use std::sync::Arc;
-#[cfg(feature = "feasibility")]
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -48,7 +39,6 @@ pub fn run() {
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
-    #[cfg(feature = "feasibility")]
     let builder = builder
         .setup(|app| {
             let runtime = Arc::new(SignatureRuntime::new(app.handle().clone()));
@@ -69,21 +59,10 @@ pub fn run() {
             app.manage(search);
             app.manage(download);
             app.manage(exit_state);
-            feasibility::signature_probe::start_lifecycle_autorun(
-                app.handle().clone(),
-                runtime,
-                coordinator,
-            )?;
             Ok(())
         })
         .on_window_event(handle_product_window_event)
         .invoke_handler(tauri::generate_handler![
-            feasibility::feasibility_signature_initialize,
-            feasibility::feasibility_signature_sign,
-            feasibility::feasibility_signature_destroy,
-            feasibility::feasibility_signature_isolation,
-            feasibility::feasibility_run_gd_probe,
-            feasibility::feasibility_ipc_canary,
             music::search::music_search,
             music::search::music_get_search_snapshot,
             music::download::music_download_batch,
@@ -107,7 +86,6 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to build yinmi");
     app.run(|app_handle, event| {
-        #[cfg(feature = "feasibility")]
         match event {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 handle_product_exit_requested(app_handle, &api);
@@ -115,7 +93,5 @@ pub fn run() {
             tauri::RunEvent::Exit => final_exit_cleanup(),
             _ => {}
         }
-        #[cfg(not(feature = "feasibility"))]
-        let _ = (app_handle, event);
     });
 }

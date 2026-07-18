@@ -18,7 +18,7 @@ use super::{
     CleanupCompletion, IsolationCounters, LateMacPolicyOwner, MacCleanupLatch, MacCompileState,
     MacPolicyIdentity, ResourcePolicyMetadata, StickyCallbackGate, macos_content_rules_for,
 };
-use crate::feasibility::{
+use crate::signature::{
     signature_host::{
         complete_macos_compile_on_ui, fail_macos_compile_affinity_on_ui,
         reconcile_macos_cleanup_on_ui,
@@ -253,126 +253,6 @@ fn nonpersistent_configuration(marker: MainThreadMarker) -> Retained<WKWebViewCo
     configuration
 }
 
-pub(crate) fn counterfactual_configuration()
--> Result<(Retained<WKWebViewConfiguration>, ResourcePolicyMetadata), SignatureError> {
-    let marker = MainThreadMarker::new().ok_or_else(|| {
-        SignatureError::Webview("macOS counterfactual must start on the main thread".into())
-    })?;
-    let configuration = nonpersistent_configuration(marker);
-    let runtime_version = wry::webview_version()
-        .map_err(|_| SignatureError::Webview("WebKit version query failed".into()))?;
-    Ok((
-        configuration,
-        ResourcePolicyMetadata {
-            runtime_version,
-            mode: "counterfactual-no-resource-rule".into(),
-            strong_source_kinds_interface_available: false,
-        },
-    ))
-}
-
-pub(crate) async fn policy_store_snapshot(
-    app: &tauri::AppHandle<tauri::Wry>,
-) -> Result<super::PolicyStoreSnapshot, SignatureError> {
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    app.run_on_main_thread(move || {
-        let result = (|| {
-            let marker = MainThreadMarker::new().ok_or_else(|| {
-                SignatureError::Webview(
-                    "macOS policy-store enumeration must start on the main thread".into(),
-                )
-            })?;
-            let store =
-                unsafe { WKContentRuleListStore::defaultStore(marker) }.ok_or_else(|| {
-                    SignatureError::Webview(
-                        "macOS content-rule store is unavailable for enumeration".into(),
-                    )
-                })?;
-            let callback_sender = Arc::new(Mutex::new(Some(sender)));
-            let completion_sender = Arc::clone(&callback_sender);
-            let completion_gate = Arc::new(super::StickyCallbackGate::default());
-            let completion: RcBlock<dyn Fn(*mut NSArray<NSString>)> =
-                RcBlock::new(move |identifiers: *mut NSArray<NSString>| {
-                    if !completion_gate.claim() {
-                        STORE_ENUMERATION_DUPLICATE_FAULT.store(true, Ordering::Release);
-                        return;
-                    }
-                    let result = if let Err(failure) = super::validate_policy_store_callback(
-                        MainThreadMarker::new().is_some(),
-                        !identifiers.is_null(),
-                    ) {
-                        Err(SignatureError::Webview(failure.message().into()))
-                    } else {
-                        let identifiers = unsafe { &*identifiers };
-                        let values = super::signature_policy_identifiers(
-                            (0..identifiers.count())
-                                .map(|index| identifiers.objectAtIndex(index).to_string()),
-                        );
-                        let mut tombstones =
-                            super::super::signature_webview::late_policy_tombstone_identifiers();
-                        tombstones.sort();
-                        tombstones.dedup();
-                        Ok(super::PolicyStoreSnapshot {
-                            backend: "wk-content-rule-list-store",
-                            identifiers: values,
-                            tombstones,
-                        })
-                    };
-                    let sender = completion_sender
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner())
-                        .take();
-                    if let Some(sender) = sender {
-                        let _ = sender.send(result);
-                    } else if completion_gate.duplicate_faulted() {
-                        STORE_ENUMERATION_DUPLICATE_FAULT.store(true, Ordering::Release);
-                    }
-                });
-            // WebKit's completion-handler API copies the block until invocation. The callback's
-            // cross-thread state is Arc/Mutex-only; Objective-C values are inspected only after
-            // the callback proves it is on the main thread.
-            unsafe { store.getAvailableContentRuleListIdentifiers(Some(&completion)) };
-            Ok::<(), SignatureError>(())
-        })();
-        if let Err(error) = result {
-            // The sender is owned by the callback only after enumeration starts. A dispatch-time
-            // failure closes the receiver and is converted to a stable fail-closed error below.
-            eprintln!("macOS policy-store enumeration dispatch failed: {error}");
-        }
-    })
-    .map_err(|_| {
-        SignatureError::Webview(
-            super::PolicyStoreEnumerationFailure::Dispatch
-                .message()
-                .into(),
-        )
-    })?;
-    let snapshot = tokio::time::timeout(super::super::signature_webview::CALL_TIMEOUT, receiver)
-        .await
-        .map_err(|_| {
-            SignatureError::Webview(
-                super::PolicyStoreEnumerationFailure::Timeout
-                    .message()
-                    .into(),
-            )
-        })?
-        .map_err(|_| {
-            SignatureError::Webview(
-                super::PolicyStoreEnumerationFailure::CallbackStopped
-                    .message()
-                    .into(),
-            )
-        })??;
-    tokio::task::yield_now().await;
-    if STORE_ENUMERATION_DUPLICATE_FAULT.load(Ordering::Acquire)
-        || PENDING_POLICY_CLEANUP_FAULT.load(Ordering::Acquire)
-    {
-        return Err(SignatureError::Webview(
-            "macOS policy-store enumeration observed a duplicate callback".into(),
-        ));
-    }
-    Ok(snapshot)
-}
 
 pub(crate) fn assert_policy_cleanup_callbacks_clean() -> Result<(), SignatureError> {
     if STORE_ENUMERATION_DUPLICATE_FAULT.load(Ordering::Acquire)

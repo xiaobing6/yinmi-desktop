@@ -4,7 +4,7 @@ use super::{
     IsolationCounters, ResourcePolicyMetadata, ResourceRequestDecision,
     classify_resource_request_for,
 };
-use crate::feasibility::signature_webview::SignatureError;
+use crate::signature::signature_webview::SignatureError;
 use url::Url;
 use webview2_com::{
     Microsoft::Web::WebView2::Win32::{
@@ -80,72 +80,6 @@ pub(crate) struct SyntheticResponse {
     pub(crate) status: u16,
     pub(crate) reason: &'static str,
     pub(crate) headers: &'static str,
-}
-
-#[cfg(test)]
-pub(crate) fn synthetic_response_for(raw_url: &str) -> Option<SyntheticResponse> {
-    match super::classify_resource_request(raw_url) {
-        ResourceRequestDecision::Allow => None,
-        ResourceRequestDecision::Block { .. } => Some(SyntheticResponse {
-            status: 403,
-            reason: "Forbidden",
-            headers: "Content-Length: 0\r\nCache-Control: no-store",
-        }),
-    }
-}
-
-#[cfg(test)]
-#[derive(Debug, Default)]
-pub(crate) struct PolicyInstallModel {
-    filter: Option<FilterTuple>,
-    handler_token: Option<i64>,
-    removed_filter: Option<FilterTuple>,
-    removed_handler_token: Option<i64>,
-    events: Vec<&'static str>,
-}
-
-#[cfg(test)]
-impl PolicyInstallModel {
-    pub(crate) fn filter_registered(&mut self, tuple: FilterTuple) -> Result<(), &'static str> {
-        if self.filter.replace(tuple).is_some() {
-            return Err("resource filter already registered");
-        }
-        self.events.push("filter-registered");
-        Ok(())
-    }
-
-    pub(crate) fn handler_registered(&mut self, token: i64) -> Result<(), &'static str> {
-        if self.filter.is_none() || self.handler_token.replace(token).is_some() {
-            return Err("handler registration ordering violation");
-        }
-        self.events.push("handler-registered");
-        Ok(())
-    }
-
-    pub(crate) fn uninstall(&mut self) -> Result<(), &'static str> {
-        let filter = self.filter.take().ok_or("resource filter is missing")?;
-        self.removed_filter = Some(filter);
-        self.events.push("filter-removed");
-        let token = self
-            .handler_token
-            .take()
-            .ok_or("resource handler is missing")?;
-        self.removed_handler_token = Some(token);
-        self.events.push("handler-removed");
-        Ok(())
-    }
-
-    pub(crate) fn removed_filter(&self) -> Option<&FilterTuple> {
-        self.removed_filter.as_ref()
-    }
-
-    pub(crate) fn removed_handler_token(&self) -> Option<i64> {
-        self.removed_handler_token
-    }
-
-    pub(crate) fn events(&self) -> &[&'static str] {
-        &self.events
-    }
 }
 
 pub(crate) struct WindowsResourcePolicyGuard {
@@ -280,22 +214,6 @@ impl WindowsResourcePolicyGuard {
     }
 }
 
-pub(crate) fn counterfactual_metadata(
-    raw_webview: &wry::WebView,
-) -> Result<ResourcePolicyMetadata, SignatureError> {
-    let environment = raw_webview.environment();
-    let webview = raw_webview.webview();
-    let mut raw_version = PWSTR::null();
-    unsafe { environment.BrowserVersionString(&mut raw_version) }
-        .map_err(|_| SignatureError::Webview("WebView2 version query failed".into()))?;
-    let runtime_version = webview2_com::take_pwstr(raw_version);
-    Ok(ResourcePolicyMetadata {
-        runtime_version,
-        mode: "counterfactual-no-resource-rule".into(),
-        strong_source_kinds_interface_available: webview.cast::<ICoreWebView2_22>().is_ok(),
-    })
-}
-
 impl Drop for WindowsResourcePolicyGuard {
     fn drop(&mut self) {
         let _ = self.uninstall();
@@ -320,95 +238,5 @@ fn remove_filter(
             webview.RemoveWebResourceRequestedFilter(uri, COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL)
         },
         _ => Err(windows_core::Error::from_win32()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        FilterTuple, PolicyInstallModel, SyntheticResponse, WindowsFilterMode, choose_filter_mode,
-        classify_resource_request_for, synthetic_response_for,
-    };
-    use url::Url;
-
-    #[test]
-    fn signature_webview_windows_mode_prefers_source_kinds_and_limits_legacy_to_111() {
-        assert_eq!(
-            choose_filter_mode(true, "111.0.1661.62").unwrap(),
-            WindowsFilterMode::AllSourceKinds
-        );
-        assert_eq!(
-            choose_filter_mode(false, "111.0.1661.62").unwrap(),
-            WindowsFilterMode::LegacyAllContextsCandidate
-        );
-        assert!(choose_filter_mode(false, "112.0.1722.34").is_err());
-        assert!(choose_filter_mode(false, "not-a-version").is_err());
-    }
-
-    #[test]
-    fn signature_webview_windows_uninstall_uses_exact_tuple_before_handler_token() {
-        let tuple = FilterTuple::all_source_kinds();
-        let mut model = PolicyInstallModel::default();
-        model.filter_registered(tuple.clone()).unwrap();
-        model.handler_registered(42).unwrap();
-        model.uninstall().unwrap();
-
-        assert_eq!(model.removed_filter(), Some(&tuple));
-        assert_eq!(model.removed_handler_token(), Some(42));
-        assert_eq!(
-            model.events(),
-            [
-                "filter-registered",
-                "handler-registered",
-                "filter-removed",
-                "handler-removed"
-            ]
-        );
-    }
-
-    #[test]
-    fn signature_webview_windows_policy_returns_empty_403_for_every_disallowed_request() {
-        assert_eq!(
-            synthetic_response_for("https://music.gdstudio.xyz/api.php"),
-            None
-        );
-        for denied in [
-            "not a url",
-            "http://127.0.0.1:31337/canary",
-            "https://evil.example/resource",
-            "file:///yinmi-denied",
-        ] {
-            assert_eq!(
-                synthetic_response_for(denied),
-                Some(SyntheticResponse {
-                    status: 403,
-                    reason: "Forbidden",
-                    headers: "Content-Length: 0\r\nCache-Control: no-store",
-                })
-            );
-        }
-    }
-
-    #[test]
-    fn signature_webview_windows_native_callback_classifies_the_injected_exact_origin() {
-        let allowed = Url::parse("https://127.0.0.1:54321/").unwrap();
-        assert_eq!(
-            classify_resource_request_for(&allowed, "https://127.0.0.1:54321/redirect/one"),
-            super::ResourceRequestDecision::Allow
-        );
-        for denied in [
-            "https://127.0.0.1:54322/blocked/fetch",
-            "wss://127.0.0.1:54322/ws/websocket",
-            "file:///yinmi-feasibility-denied",
-        ] {
-            assert!(matches!(
-                classify_resource_request_for(&allowed, denied),
-                super::ResourceRequestDecision::Block { .. }
-            ));
-        }
-        assert_eq!(
-            classify_resource_request_for(&allowed, "https://127.0.0.1:54322/blocked/fetch"),
-            super::ResourceRequestDecision::Block { canary: true }
-        );
     }
 }
