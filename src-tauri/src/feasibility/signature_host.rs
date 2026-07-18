@@ -9,10 +9,13 @@ use super::{
         GD_PAGE_URL, NavigationGate, SCENARIO_INIT_CALLBACK_DELAY, SCENARIO_SIGN_CALLBACK_DELAY,
         SIGNATURE_HOST_WINDOW_LABEL, SIGNATURE_WEBVIEW_ID, SignatureError,
     },
-    webview_resource_policy::{IsolationCounters, ResourcePolicyGuard, ResourcePolicyMetadata},
+    webview_resource_policy::{IsolationCounters, ResourcePolicyMetadata},
 };
 use tauri::Manager;
 use url::Url;
+
+#[cfg(any(windows, target_os = "macos"))]
+use super::webview_resource_policy::ResourcePolicyGuard;
 
 #[cfg(target_os = "macos")]
 use super::webview_resource_policy::{
@@ -849,6 +852,7 @@ struct MainThreadSignatureInstance {
 }
 
 enum ActiveResourcePolicy {
+    #[cfg(any(windows, target_os = "macos"))]
     Protected(ResourcePolicyGuard),
     Counterfactual(ResourcePolicyMetadata),
 }
@@ -856,6 +860,7 @@ enum ActiveResourcePolicy {
 impl ActiveResourcePolicy {
     fn metadata(&self) -> &ResourcePolicyMetadata {
         match self {
+            #[cfg(any(windows, target_os = "macos"))]
             Self::Protected(policy) => policy.metadata(),
             Self::Counterfactual(metadata) => metadata,
         }
@@ -901,6 +906,10 @@ struct PendingResourcePolicy {
 struct PendingResourcePolicy {
     native: Option<super::webview_resource_policy::macos::PendingMacosResourcePolicy>,
 }
+
+#[cfg(not(any(windows, target_os = "macos")))]
+#[derive(Default)]
+struct PendingResourcePolicy;
 
 pub(crate) async fn create_raw_signature_host(
     app: tauri::AppHandle<tauri::Wry>,
@@ -1038,6 +1047,25 @@ async fn handoff_host_to_ui(
     receiver
         .await
         .map_err(|_| SignatureError::Webview("raw signature host UI callback stopped".into()))?
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+async fn handoff_host_to_ui(
+    _app: tauri::AppHandle<tauri::Wry>,
+    host: tauri::Window<tauri::Wry>,
+    ticket: Arc<CreationTicket>,
+    _builder_spec: RawWebViewBuilderSpec,
+    _events: tokio::sync::mpsc::UnboundedSender<HostEvent>,
+) -> Result<HostInitialization, SignatureError> {
+    ticket.cancel();
+    ticket.mark_policy_cleanup();
+    ticket.mark_tombstones_empty();
+    host.destroy().map_err(|error| {
+        SignatureError::Webview(format!("native signature host destroy failed: {error}"))
+    })?;
+    Err(SignatureError::Webview(
+        "raw signature host is supported only on Windows and macOS".into(),
+    ))
 }
 
 #[cfg(target_os = "macos")]
@@ -2318,6 +2346,41 @@ fn destroy_generation_on_ui(ticket: &Arc<CreationTicket>) -> Result<(), Signatur
                     ))
                 })
             }
+
+            #[cfg(not(any(windows, target_os = "macos")))]
+            {
+                pending.trace.record_cancelled();
+                let _ = &pending.builder_spec;
+                let _ = &pending.events;
+                let _ = pending.policy_build;
+                ticket.mark_policy_cleanup();
+                ticket.mark_tombstones_empty();
+                UI_ACTOR_MODEL.with(|actor| {
+                    let _ = actor
+                        .borrow_mut()
+                        .request_destroy(ticket.generation, ticket.operation_id);
+                    let _ = actor.borrow_mut().acknowledge(
+                        ticket.generation,
+                        ticket.operation_id,
+                        TeardownEvent::PolicyCleanup,
+                    );
+                });
+                RAW_SIGNATURE_SLOT.with(|slot| {
+                    *slot.borrow_mut() = MainThreadSignatureSlot::Destroying(
+                        DestroyingMainThreadSignatureInstance {
+                            generation: ticket.generation,
+                            operation_id: ticket.operation_id,
+                            host_label: ticket.host_label().to_string(),
+                            ticket: Arc::clone(ticket),
+                        },
+                    );
+                });
+                pending.host.destroy().map_err(|error| {
+                    SignatureError::Webview(format!(
+                        "native signature host destroy failed: {error}"
+                    ))
+                })
+            }
         }
         MainThreadSignatureSlot::Ready(mut ready)
             if ready.generation == ticket.generation
@@ -2428,6 +2491,40 @@ fn destroy_generation_on_ui(ticket: &Arc<CreationTicket>) -> Result<(), Signatur
                 });
                 cleanup_result.map(|_| ()).and(destroy_result)
             }
+
+            #[cfg(not(any(windows, target_os = "macos")))]
+            {
+                let _ = ready.counters.snapshot();
+                drop(ready.policy);
+                drop(ready.webview);
+                ticket.mark_policy_cleanup();
+                ticket.mark_tombstones_empty();
+                UI_ACTOR_MODEL.with(|actor| {
+                    let _ = actor
+                        .borrow_mut()
+                        .request_destroy(ticket.generation, ticket.operation_id);
+                    let _ = actor.borrow_mut().acknowledge(
+                        ticket.generation,
+                        ticket.operation_id,
+                        TeardownEvent::PolicyCleanup,
+                    );
+                });
+                RAW_SIGNATURE_SLOT.with(|slot| {
+                    *slot.borrow_mut() = MainThreadSignatureSlot::Destroying(
+                        DestroyingMainThreadSignatureInstance {
+                            generation: ticket.generation,
+                            operation_id: ticket.operation_id,
+                            host_label: ticket.host_label().to_string(),
+                            ticket: Arc::clone(ticket),
+                        },
+                    );
+                });
+                ready.host.destroy().map_err(|error| {
+                    SignatureError::Webview(format!(
+                        "native signature host destroy failed: {error}"
+                    ))
+                })
+            }
         }
         MainThreadSignatureSlot::Destroying(destroying)
             if destroying.generation == ticket.generation
@@ -2525,6 +2622,13 @@ pub(crate) fn authoritative_final_exit_readiness_on_ui() -> FinalExitReadiness {
             .with(|slot| matches!(&*slot.borrow(), MainThreadSignatureSlot::Empty));
         FinalExitReadiness::new(true, slot_empty, true, true)
     }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let slot_empty = RAW_SIGNATURE_SLOT
+            .with(|slot| matches!(&*slot.borrow(), MainThreadSignatureSlot::Empty));
+        FinalExitReadiness::new(true, slot_empty, true, true)
+    }
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -2575,7 +2679,7 @@ pub(crate) fn final_exit_drop() {
         return;
     }
 
-    #[cfg(windows)]
+    #[cfg(not(target_os = "macos"))]
     {
         RAW_SIGNATURE_SLOT.with(|slot| {
             let previous = mem::replace(&mut *slot.borrow_mut(), MainThreadSignatureSlot::Empty);

@@ -353,6 +353,17 @@ pub(crate) async fn policy_store_snapshot(
     macos::policy_store_snapshot(app).await
 }
 
+#[cfg(not(any(windows, target_os = "macos")))]
+pub(crate) async fn policy_store_snapshot(
+    _app: &tauri::AppHandle<tauri::Wry>,
+) -> Result<PolicyStoreSnapshot, crate::feasibility::signature_webview::SignatureError> {
+    Ok(PolicyStoreSnapshot {
+        backend: "not-applicable-unsupported-platform",
+        identifiers: Vec::new(),
+        tombstones: Vec::new(),
+    })
+}
+
 #[cfg(windows)]
 pub(crate) fn assert_policy_cleanup_callbacks_clean()
 -> Result<(), crate::feasibility::signature_webview::SignatureError> {
@@ -363,6 +374,12 @@ pub(crate) fn assert_policy_cleanup_callbacks_clean()
 pub(crate) fn assert_policy_cleanup_callbacks_clean()
 -> Result<(), crate::feasibility::signature_webview::SignatureError> {
     macos::assert_policy_cleanup_callbacks_clean()
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub(crate) fn assert_policy_cleanup_callbacks_clean()
+-> Result<(), crate::feasibility::signature_webview::SignatureError> {
+    Ok(())
 }
 
 pub const MACOS_CONTENT_RULES: &str = r#"[

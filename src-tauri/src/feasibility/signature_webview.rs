@@ -1213,6 +1213,8 @@ fn observed_policy_exit_conditions() -> (bool, bool) {
     let policy_tombstones_empty = observed_late_policy_tombstones_empty();
     #[cfg(windows)]
     let policy_tombstones_empty = true;
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let policy_tombstones_empty = true;
 
     let callbacks_clean =
         super::webview_resource_policy::assert_policy_cleanup_callbacks_clean().is_ok();

@@ -861,6 +861,8 @@ async fn run_lifecycle_autorun(
     let translated = None;
     #[cfg(target_os = "macos")]
     let translated = translated_process()?;
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let translated = None;
     let kind = post_process_info(&client, &config, translated).await?;
     if kind == AutorunKind::Isolation {
         if config.phase != AutorunPhase::WriteMarkerAndCloseMain {
@@ -2509,6 +2511,8 @@ fn expected_barrier(vector: &str) -> &'static str {
         _ => "webview2-web-resource-requested",
         #[cfg(target_os = "macos")]
         _ => "wk-content-rule-list",
+        #[cfg(not(any(windows, target_os = "macos")))]
+        _ => "unsupported-platform-resource-policy",
     }
 }
 
@@ -2568,6 +2572,10 @@ fn derive_resource_row(
             ("native-callback", None)
         }
         #[cfg(target_os = "macos")]
+        {
+            ("paired-counterfactual", Some(counterfactual.direct_hits))
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             ("paired-counterfactual", Some(counterfactual.direct_hits))
         }
@@ -3137,6 +3145,16 @@ fn platform_facts(
     })
 }
 
+#[cfg(not(any(windows, target_os = "macos")))]
+fn platform_facts(
+    _config: &ControlledCanaryConfig,
+    _runtime_version: &str,
+) -> Result<PlatformFacts, SignatureError> {
+    Err(SignatureError::Webview(
+        "controlled signature probes are supported only on Windows and macOS".into(),
+    ))
+}
+
 async fn run_controlled_isolation_probe(
     runtime: &super::signature_webview::SignatureRuntime,
     config: &ControlledCanaryConfig,
@@ -3293,6 +3311,10 @@ async fn run_controlled_isolation_probe(
             {
                 None
             }
+            #[cfg(not(any(windows, target_os = "macos")))]
+            {
+                None
+            }
         },
         current_url: first_url,
         final_url,
@@ -3340,6 +3362,8 @@ async fn run_controlled_isolation_probe(
             #[cfg(windows)]
             blocked_canary_attempts: Some(counters.resource_canary_hits),
             #[cfg(target_os = "macos")]
+            blocked_canary_attempts: None,
+            #[cfg(not(any(windows, target_os = "macos")))]
             blocked_canary_attempts: None,
             resource_vector_results,
         },
@@ -4172,6 +4196,8 @@ mod tests {
                     _ => "webview2-22-all-source-kinds".into(),
                     #[cfg(target_os = "macos")]
                     _ => "wk-content-rule-list-exact-origin".into(),
+                    #[cfg(not(any(windows, target_os = "macos")))]
+                    _ => "unsupported-platform-resource-policy".into(),
                 },
                 strong_source_kinds_interface_available: cfg!(windows),
                 official_finished_before_polling: true,
