@@ -192,7 +192,7 @@ function validateManifest(options) {
 
   const universalSource = {
     signature: universalSignature,
-    url: universalArchive.browser_download_url,
+    url: universalArchive.url,
   };
   manifest.platforms['darwin-universal'] = universalSource;
 
