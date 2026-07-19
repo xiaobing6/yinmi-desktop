@@ -15,8 +15,9 @@ use futures_util::StreamExt;
 use image::{ImageFormat, ImageReader};
 use lofty::{
     config::WriteOptions,
-    file::{AudioFile, TaggedFileExt},
+    file::{AudioFile, FileType, TaggedFileExt},
     picture::{MimeType, Picture, PictureType},
+    probe::Probe,
     tag::Tag,
 };
 use serde::{Deserialize, Serialize};
@@ -24,7 +25,6 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
-use crate::signature::signature_webview::SignatureRuntime;
 use crate::music::{
     contract::{
         AudioAvailability, EncodedComponent, GdOperation, GdSource, ProbeSong,
@@ -35,6 +35,7 @@ use crate::music::{
     search::{MusicCommandError, MusicSearchService, SearchResult},
     storage_space,
 };
+use crate::signature::signature_webview::SignatureRuntime;
 
 const GD_API_URL: &str = "https://music.gdstudio.xyz/api.php";
 const MAX_API_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
@@ -100,6 +101,7 @@ pub struct DownloadProgress {
     pub failed: usize,
     pub cancelled: usize,
     pub state: DownloadProgressState,
+    pub completed_item: Option<DownloadItemResult>,
     pub current_downloaded_bytes: u64,
     pub current_total_bytes: Option<u64>,
     pub bytes_per_second: u64,
@@ -320,6 +322,34 @@ impl SongProgress<'_> {
         current_total_bytes: Option<u64>,
         bytes_per_second: u64,
     ) {
+        self.emit_snapshot(
+            state,
+            current_downloaded_bytes,
+            current_total_bytes,
+            bytes_per_second,
+            None,
+        );
+    }
+
+    fn emit_completed(&self, item: DownloadItemResult) {
+        let bytes = item.bytes;
+        self.emit_snapshot(
+            DownloadProgressState::Finished,
+            bytes,
+            Some(bytes).filter(|value| *value > 0),
+            0,
+            Some(item),
+        );
+    }
+
+    fn emit_snapshot(
+        &self,
+        state: DownloadProgressState,
+        current_downloaded_bytes: u64,
+        current_total_bytes: Option<u64>,
+        bytes_per_second: u64,
+        completed_item: Option<DownloadItemResult>,
+    ) {
         let snapshot = DownloadProgress {
             batch_id: self.batch_id,
             completed: self.completed,
@@ -331,6 +361,7 @@ impl SongProgress<'_> {
             failed: self.counters.failed,
             cancelled: self.counters.cancelled,
             state,
+            completed_item,
             current_downloaded_bytes,
             current_total_bytes,
             bytes_per_second,
@@ -549,6 +580,13 @@ impl MusicDownloadService {
                     }
                     Err(DownloadFailure::Failed(error)) => {
                         failed += 1;
+                        log::warn!(
+                            "下载项目失败 batch_id={} song_id={} code={} message={}",
+                            batch_id,
+                            song.id,
+                            error.code,
+                            error.message
+                        );
                         DownloadItemResult {
                             song_id: song.id,
                             name: song.name,
@@ -585,12 +623,7 @@ impl MusicDownloadService {
                     cancelled,
                 },
             }
-            .emit(
-                DownloadProgressState::Finished,
-                items[index].bytes,
-                Some(items[index].bytes).filter(|bytes| *bytes > 0),
-                0,
-            );
+            .emit_completed(items[index].clone());
         }
 
         let retryable_ids = items
@@ -613,7 +646,7 @@ impl MusicDownloadService {
 
         let result = DownloadBatchResult {
             batch_id,
-            directory: directory.to_string_lossy().into_owned(),
+            directory: path_for_display(&directory),
             total,
             succeeded,
             skipped,
@@ -766,14 +799,75 @@ impl MusicDownloadService {
         if cancel.is_cancelled() {
             return Err(DownloadFailure::Cancelled);
         }
-        let (temp_path, mut file) = self.create_temp_file(directory).await?;
+
+        let mut stream = response.bytes_stream();
         let mut first_bytes = Vec::with_capacity(16);
         let mut written = 0_u64;
-        let mut stream = response.bytes_stream();
+        let mut initial_chunks = Vec::new();
         let started = Instant::now();
+        while first_bytes.len() < 16 {
+            let next = tokio::select! {
+                _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
+                next = stream.next() => next,
+            };
+            let Some(chunk) = next else { break };
+            let chunk =
+                chunk.map_err(|_| MusicCommandError::new("DOWNLOAD_NETWORK", "音频下载中断"))?;
+            if chunk.is_empty() {
+                continue;
+            }
+            written = written
+                .checked_add(chunk.len() as u64)
+                .filter(|size| *size <= MAX_AUDIO_BYTES)
+                .ok_or_else(|| {
+                    MusicCommandError::new("DOWNLOAD_MEDIA", "音频文件超过 2 GiB 上限")
+                })?;
+            let remaining = 16 - first_bytes.len();
+            first_bytes.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
+            initial_chunks.push(chunk);
+        }
+        if written == 0 {
+            return Err(MusicCommandError::new("DOWNLOAD_MEDIA", "下载到的音频文件为空").into());
+        }
+
+        let extension = detect_extension(
+            &first_bytes,
+            content_type.as_deref(),
+            url_extension.as_deref(),
+        )
+        .ok_or_else(|| MusicCommandError::new("DOWNLOAD_MEDIA", "无法识别音频格式"))?;
+        let final_path = directory.join(format!("{file_stem}.{extension}"));
+        if let Some(path) = find_existing_audio(directory, &file_stem, extension).await {
+            self.record_existing(directory, &song.id, extension);
+            return Ok(DownloadedFile::Skipped {
+                path,
+                warnings: Vec::new(),
+            });
+        }
+        if cancel.is_cancelled() {
+            return Err(DownloadFailure::Cancelled);
+        }
+
+        let (temp_path, mut file) = self.create_temp_file(directory).await?;
+        let elapsed = started.elapsed().as_secs_f64();
+        let initial_speed = if elapsed > 0.0 {
+            (written as f64 / elapsed) as u64
+        } else {
+            0
+        };
+        progress.emit(
+            DownloadProgressState::Downloading,
+            written,
+            total_bytes,
+            initial_speed,
+        );
         let mut last_progress = Instant::now();
-        progress.emit(DownloadProgressState::Downloading, 0, total_bytes, 0);
         let transfer_result: Result<(), DownloadFailure> = async {
+            for chunk in initial_chunks {
+                file.write_all(&chunk)
+                    .await
+                    .map_err(|_| MusicCommandError::new("FS_PATH", "写入音频临时文件失败"))?;
+            }
             loop {
                 let next = tokio::select! {
                     _ = cancel.cancelled() => return Err(DownloadFailure::Cancelled),
@@ -788,10 +882,6 @@ impl MusicDownloadService {
                     .ok_or_else(|| {
                         MusicCommandError::new("DOWNLOAD_MEDIA", "音频文件超过 2 GiB 上限")
                     })?;
-                if first_bytes.len() < 16 {
-                    let remaining = 16 - first_bytes.len();
-                    first_bytes.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
-                }
                 file.write_all(&chunk)
                     .await
                     .map_err(|_| MusicCommandError::new("FS_PATH", "写入音频临时文件失败"))?;
@@ -813,11 +903,6 @@ impl MusicDownloadService {
                     last_progress = Instant::now();
                 }
             }
-            if written == 0 {
-                return Err(
-                    MusicCommandError::new("DOWNLOAD_MEDIA", "下载到的音频文件为空").into(),
-                );
-            }
             file.flush()
                 .await
                 .map_err(|_| MusicCommandError::new("FS_PATH", "保存音频文件失败"))?;
@@ -838,35 +923,24 @@ impl MusicDownloadService {
             return Err(DownloadFailure::Cancelled);
         }
 
-        let extension = detect_extension(
-            &first_bytes,
-            content_type.as_deref(),
-            url_extension.as_deref(),
-        )
-        .ok_or_else(|| MusicCommandError::new("DOWNLOAD_MEDIA", "无法识别音频格式"));
-        let extension = match extension {
-            Ok(extension) => extension,
-            Err(error) => {
-                let _ = tokio::fs::remove_file(&temp_path).await;
-                return Err(error.into());
-            }
-        };
-        let final_path = directory.join(format!("{file_stem}.{extension}"));
-        if let Some(path) = find_existing_audio(directory, &file_stem, extension).await {
-            let _ = tokio::fs::remove_file(&temp_path).await;
-            self.record_existing(directory, &song.id, extension);
-            return Ok(DownloadedFile::Skipped {
-                path,
-                warnings: Vec::new(),
-            });
-        }
         let mut warnings = Vec::new();
         if embed_cover {
             if matches!(extension, "mp3" | "flac") {
+                let audio_file_type = match extension {
+                    "mp3" => FileType::Mpeg,
+                    "flac" => FileType::Flac,
+                    _ => unreachable!("cover embedding is restricted to MP3 and FLAC"),
+                };
                 match song.pic_id.as_deref().filter(|id| !id.trim().is_empty()) {
                     Some(pic_id) => {
                         match self
-                            .fetch_and_embed_cover(&temp_path, source, pic_id, cancel)
+                            .fetch_and_embed_cover(
+                                &temp_path,
+                                audio_file_type,
+                                source,
+                                pic_id,
+                                cancel,
+                            )
                             .await
                         {
                             Ok(()) => {}
@@ -1002,6 +1076,7 @@ impl MusicDownloadService {
     async fn fetch_and_embed_cover(
         &self,
         audio_path: &Path,
+        audio_file_type: FileType,
         source: GdSource,
         picture_id: &str,
         cancel: &CancellationToken,
@@ -1073,11 +1148,12 @@ impl MusicDownloadService {
         }
 
         let path = audio_path.to_owned();
-        let embed_result =
-            tokio::task::spawn_blocking(move || embed_cover(&path, bytes, mime_type))
-                .await
-                .map_err(|_| MusicCommandError::new("DOWNLOAD_MEDIA", "封面写入任务异常"))
-                .and_then(|result| result);
+        let embed_result = tokio::task::spawn_blocking(move || {
+            embed_cover(&path, audio_file_type, bytes, mime_type)
+        })
+        .await
+        .map_err(|_| MusicCommandError::new("DOWNLOAD_MEDIA", "封面写入任务异常"))
+        .and_then(|result| result);
         match embed_result {
             Ok(()) => {
                 let _ = tokio::fs::remove_file(&backup_path).await;
@@ -1419,6 +1495,20 @@ fn song_file_stem(song: &ProbeSong) -> String {
     format!("【{id}】{name}")
 }
 
+fn path_for_display(path: &Path) -> String {
+    let value = path.to_string_lossy();
+    #[cfg(windows)]
+    {
+        if let Some(remainder) = value.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{remainder}");
+        }
+        if let Some(remainder) = value.strip_prefix(r"\\?\") {
+            return remainder.to_owned();
+        }
+    }
+    value.into_owned()
+}
+
 async fn find_existing_audio(directory: &Path, stem: &str, extension: &str) -> Option<PathBuf> {
     let path = directory.join(format!("{stem}.{extension}"));
     tokio::fs::symlink_metadata(&path).await.ok().map(|_| path)
@@ -1624,10 +1714,14 @@ fn validate_cover_image(bytes: &[u8]) -> Result<MimeType, MusicCommandError> {
 
 fn embed_cover(
     audio_path: &Path,
+    audio_file_type: FileType,
     bytes: Vec<u8>,
     mime_type: MimeType,
 ) -> Result<(), MusicCommandError> {
-    let mut tagged_file = lofty::read_from_path(audio_path)
+    let mut tagged_file = Probe::open(audio_path)
+        .map_err(|_| MusicCommandError::new("DOWNLOAD_MEDIA", "无法读取音频标签"))?
+        .set_file_type(audio_file_type)
+        .read()
         .map_err(|_| MusicCommandError::new("DOWNLOAD_MEDIA", "无法读取音频标签"))?;
     let picture = Picture::unchecked(bytes)
         .pic_type(PictureType::CoverFront)
@@ -1934,4 +2028,132 @@ pub async fn music_scan_existing(
     service
         .scan_existing(&app, &snapshot, &request.base_directory)
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn minimal_mp3() -> Vec<u8> {
+        const FRAME_SIZE: usize = 417;
+        let mut bytes = b"ID3\x03\x00\x00\x00\x00\x00\x00".to_vec();
+        for _ in 0..2 {
+            let mut frame = vec![0_u8; FRAME_SIZE];
+            frame[..4].copy_from_slice(&[0xff, 0xfb, 0x90, 0x64]);
+            bytes.extend(frame);
+        }
+        bytes
+    }
+
+    #[test]
+    fn audio_header_takes_priority_over_mime_and_url_extension() {
+        assert_eq!(
+            detect_extension(
+                b"ID3\x03\x00\x00\x00\x00\x00\x00",
+                Some("audio/flac"),
+                Some("flac")
+            ),
+            Some("mp3")
+        );
+    }
+
+    #[tokio::test]
+    async fn existing_audio_check_only_matches_the_detected_extension() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after the Unix epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "yinmi-existing-audio-test-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory).expect("test directory can be created");
+        let stem = "[song-1]Song One";
+        let mp3_path = directory.join(format!("{stem}.mp3"));
+        std::fs::write(&mp3_path, minimal_mp3()).expect("test MP3 can be written");
+
+        assert_eq!(
+            find_existing_audio(&directory, stem, "mp3").await,
+            Some(mp3_path)
+        );
+        assert_eq!(find_existing_audio(&directory, stem, "flac").await, None);
+
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn display_path_hides_windows_verbatim_prefixes() {
+        assert_eq!(
+            path_for_display(Path::new(r"\\?\C:\Users\DELL\Music\刘德华")),
+            r"C:\Users\DELL\Music\刘德华"
+        );
+        assert_eq!(
+            path_for_display(Path::new(r"\\?\UNC\server\music\刘德华")),
+            r"\\server\music\刘德华"
+        );
+    }
+
+    #[test]
+    fn progress_serializes_completed_item_for_live_status() {
+        let progress = DownloadProgress {
+            batch_id: 7,
+            completed: 1,
+            total: 2,
+            current_song_id: "song-1".to_owned(),
+            current_name: "Song One".to_owned(),
+            succeeded: 1,
+            skipped: 0,
+            failed: 0,
+            cancelled: 0,
+            state: DownloadProgressState::Finished,
+            completed_item: Some(DownloadItemResult {
+                song_id: "song-1".to_owned(),
+                name: "Song One".to_owned(),
+                state: DownloadItemState::Success,
+                path: Some("song-1.mp3".to_owned()),
+                bytes: 42,
+                code: None,
+                message: None,
+                warnings: Vec::new(),
+            }),
+            current_downloaded_bytes: 42,
+            current_total_bytes: Some(42),
+            bytes_per_second: 0,
+        };
+
+        let value = serde_json::to_value(progress).expect("progress serializes");
+        assert_eq!(value["completedItem"]["songId"], "song-1");
+        assert_eq!(value["completedItem"]["state"], "success");
+    }
+
+    #[test]
+    fn embeds_cover_into_part_file_using_detected_audio_type() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after the Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            ".yinmi-cover-test-{}-{unique}.part",
+            std::process::id()
+        ));
+        std::fs::write(&path, minimal_mp3()).expect("test MP3 can be written");
+
+        assert!(lofty::read_from_path(&path).is_err());
+        let result = embed_cover(&path, FileType::Mpeg, vec![1, 2, 3], MimeType::Png);
+        let picture_count = result.as_ref().ok().and_then(|_| {
+            Probe::open(&path)
+                .ok()?
+                .set_file_type(FileType::Mpeg)
+                .read()
+                .ok()?
+                .primary_tag()
+                .map(|tag| tag.pictures().len())
+        });
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.is_ok(), "cover embedding failed: {result:?}");
+        assert_eq!(picture_count, Some(1));
+    }
 }

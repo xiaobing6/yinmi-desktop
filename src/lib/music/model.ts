@@ -62,6 +62,7 @@ export interface DownloadProgress {
   failed: number;
   cancelled: number;
   state: DownloadProgressState;
+  completedItem: DownloadItemResult | null;
   currentDownloadedBytes: number;
   currentTotalBytes: number | null;
   bytesPerSecond: number;

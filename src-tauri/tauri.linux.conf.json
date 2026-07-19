@@ -1,0 +1,16 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "音觅",
+        "width": 1280,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 480,
+        "decorations": true,
+        "shadow": true
+      }
+    ]
+  }
+}

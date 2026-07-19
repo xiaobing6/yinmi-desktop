@@ -159,11 +159,32 @@ impl fmt::Display for SearchCount {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SearchPageSize(u16);
+
+impl SearchPageSize {
+    pub const MAX: u16 = 99;
+
+    pub const fn for_target(target: SearchCount) -> Self {
+        Self(if target.get() > Self::MAX {
+            Self::MAX
+        } else {
+            target.get()
+        })
+    }
+}
+
+impl fmt::Display for SearchPageSize {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum GdOperation {
     Search {
         operation: SearchOperation,
-        count: SearchCount,
+        count: SearchPageSize,
         source: GdSource,
         page: u16,
         name: EncodedComponent,
@@ -182,6 +203,32 @@ pub enum GdOperation {
         id: EncodedComponent,
         source: GdSource,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_page_size_caps_upstream_count_at_99() {
+        let target = SearchCount::try_from(1_000).expect("valid target count");
+        let operation = GdOperation::Search {
+            operation: SearchOperation::Track,
+            count: SearchPageSize::for_target(target),
+            source: GdSource::NeteaseMusic,
+            page: 1,
+            name: EncodedComponent::encode("刘德华"),
+        };
+        let signature = SignatureValue::try_from("test-signature").expect("valid signature");
+
+        assert!(render_form_body(&operation, &signature).contains("count=99"));
+    }
+
+    #[test]
+    fn search_page_size_keeps_smaller_targets() {
+        let target = SearchCount::try_from(20).expect("valid target count");
+        assert_eq!(SearchPageSize::for_target(target).to_string(), "20");
+    }
 }
 
 impl GdOperation {

@@ -1,9 +1,9 @@
 :root {
   font-family:
-    'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', system-ui,
-    sans-serif;
-  color: #171b1a;
-  background: #f1f3ef;
+    'Segoe UI Variable Text', 'Microsoft YaHei UI', 'PingFang SC',
+    'Noto Sans CJK SC', system-ui, sans-serif;
+  color: #1d1d1f;
+  background: #f4f9fd;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -12,6 +12,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: #f4f9fd;
 }
 
 button,

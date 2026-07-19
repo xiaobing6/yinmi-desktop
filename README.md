@@ -4,14 +4,14 @@
 
 ## 下载
 
-当前版本：`v0.1.2`
+当前版本：`v0.1.3`
 
 [前往 GitHub Releases 下载](https://github.com/xiaobing6/yinmi-desktop/releases/latest)
 
 | 平台 | 安装包 | 支持范围 |
 | --- | --- | --- |
-| Windows | `音觅_0.1.2_x64-setup.exe` | Windows 10 22H2、Windows 11，x64 |
-| macOS | `音觅_0.1.2_universal.dmg` | macOS 13.3 或更高版本，Intel 与 Apple 芯片 |
+| Windows | `音觅_0.1.3_x64-setup.exe` | Windows 10 22H2、Windows 11，x64 |
+| macOS | `音觅_0.1.3_universal.dmg` | macOS 13.3 或更高版本，Intel 与 Apple 芯片 |
 
 Windows 安装包目前没有 Authenticode 商业代码签名，可能出现 SmartScreen 提示。macOS 安装包目前没有 Developer ID 公证，首次打开时可能需要在“系统设置 → 隐私与安全性”中允许运行。请只从本仓库的 GitHub Releases 页面下载安装包。
 

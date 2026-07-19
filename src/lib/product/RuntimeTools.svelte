@@ -327,6 +327,7 @@
     {:else}
       {#each filteredLogs() as entry (entry.id)}
         <div
+          data-level={levelName(entry.level)}
           class:error={entry.level === LogLevel.Error}
           class:warn={entry.level === LogLevel.Warn}
         >
@@ -361,6 +362,7 @@
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
+    height: 32px;
     min-width: 0;
     margin-left: auto;
   }
@@ -576,6 +578,324 @@
     }
     .log-drawer footer span {
       flex-basis: 100%;
+    }
+  }
+
+  .logs-button,
+  .quiet,
+  .update-action,
+  .update-error {
+    min-height: 32px;
+    border-radius: 999px;
+    padding-inline: 13px;
+    font-size: 0.68rem;
+  }
+  button:focus-visible {
+    outline-color: #8b7cff52;
+  }
+  .logs-button {
+    border: 1px solid #ffffff18;
+    background: #ffffff0a;
+    color: #c6cedb;
+  }
+  .logs-button:hover {
+    background: #ffffff12;
+    color: #fff;
+  }
+  .update-action {
+    background: #8b7cff;
+    color: #fff;
+  }
+  .quiet {
+    color: #929db0;
+  }
+  .update-status {
+    color: #929db0;
+  }
+  .update-status.ready {
+    color: #b9b0ff;
+  }
+  .update-error {
+    background: #673d47;
+    color: #ffc5b7;
+  }
+  .log-drawer {
+    width: min(730px, 94vw);
+    height: min(740px, 90vh);
+    border-left-color: #dfe4ed;
+    border-radius: 22px 0 0 22px;
+    background: #f6f7fb;
+    color: #101827;
+    box-shadow: -22px 0 70px #10182733;
+  }
+  .log-drawer::backdrop {
+    background: #10182780;
+  }
+  .log-drawer header {
+    border-bottom-color: #e5e8ef;
+    padding: 21px 24px;
+  }
+  .log-drawer header span,
+  .log-controls span {
+    color: #8b7cff;
+    font-family: 'Microsoft YaHei UI', sans-serif;
+  }
+  .log-drawer h2 {
+    font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
+  }
+  .close {
+    border-radius: 50%;
+    background: #f0f1f6;
+    color: #59657a;
+  }
+  .log-controls {
+    border-bottom-color: #e5e8ef;
+    padding: 13px 20px;
+  }
+  .log-controls select,
+  .log-controls input {
+    border-color: #d8deea;
+    border-radius: 9px;
+    background: #fff;
+    color: #101827;
+  }
+  .log-viewport {
+    background: #101827;
+    color: #dfe4ed;
+  }
+  .log-viewport b {
+    color: #a69cff;
+  }
+  .log-drawer footer {
+    border-top-color: #e5e8ef;
+    padding: 12px 20px;
+  }
+  .log-drawer footer button {
+    border-radius: 999px;
+    background: #eeecff;
+    color: #5f53c7;
+  }
+
+  /* Blue-and-white application chrome */
+  button:focus-visible {
+    outline-color: #168be83d;
+  }
+  .logs-button,
+  .quiet,
+  .update-action,
+  .update-error {
+    min-height: 32px;
+    border-radius: 8px;
+    padding-inline: 12px;
+    font-size: 0.72rem;
+  }
+  .logs-button {
+    border: 1px solid #cfe0ed;
+    background: #f8fbfd;
+    color: #0876d1;
+  }
+  .logs-button:hover {
+    border-color: #b7d7ec;
+    background: #edf7fd;
+    color: #0876d1;
+  }
+  .update-action {
+    background: #0876d1;
+    color: #fff;
+  }
+  .quiet {
+    background: transparent;
+    color: #718295;
+  }
+  .update-status {
+    color: #718295;
+  }
+  .update-status.ready {
+    color: #0876d1;
+  }
+  .update-error {
+    border: 1px solid #efc9c5;
+    background: #fff6f5;
+    color: #bd4e47;
+  }
+  .log-drawer {
+    width: min(730px, calc(100vw - 32px));
+    height: min(740px, calc(100vh - 32px));
+    margin: auto 16px auto auto;
+    overflow: hidden;
+    border: 1px solid #d7e5ef;
+    border-radius: 18px;
+    background: #fff;
+    color: #1d1d1f;
+    box-shadow:
+      0 28px 80px #31556f2b,
+      0 4px 18px #168be812;
+  }
+  .log-drawer::backdrop {
+    background: #46677f42;
+    backdrop-filter: blur(2px);
+  }
+  .log-drawer[open] {
+    animation: log-drawer-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .log-drawer header {
+    border-bottom-color: #dce5ee;
+    background: #fff;
+    padding: 20px 24px 18px;
+  }
+  .log-drawer header span,
+  .log-controls span {
+    color: #0876d1;
+  }
+  .close {
+    position: relative;
+    display: grid;
+    flex: 0 0 38px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #dce9f2;
+    border-radius: 50%;
+    background: #f2f8fc;
+    color: transparent;
+    font-size: 0;
+  }
+  .close::before,
+  .close::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 1.6px;
+    border-radius: 999px;
+    background: #587084;
+    transform: translate(-50%, -50%) rotate(45deg);
+  }
+  .close::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
+  }
+  .close:hover {
+    border-color: #c7dfef;
+    background: #e8f4fb;
+  }
+  .log-controls {
+    border-bottom-color: #dce5ee;
+    background: #f7fbfe;
+    padding: 12px 20px 13px;
+  }
+  .log-controls select,
+  .log-controls input {
+    border-color: #cedae5;
+    border-radius: 8px;
+    background: #fff;
+    color: #1d1d1f;
+  }
+  .log-controls .auto input {
+    accent-color: #168be8;
+  }
+  .log-viewport {
+    background: #f8fbfd;
+    color: #30475a;
+    scrollbar-color: #b9cad7 transparent;
+  }
+  .log-viewport > div {
+    position: relative;
+    border-bottom: 1px solid #e8f0f5;
+    padding: 5px 20px 5px 22px;
+  }
+  .log-viewport > div::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 9px;
+    width: 2px;
+    border-radius: 999px;
+    background: #c4d2dc;
+  }
+  .log-viewport > div:hover {
+    background: #eef7fc;
+  }
+  .log-viewport time {
+    color: #8294a3;
+  }
+  .log-viewport b {
+    color: #0876d1;
+  }
+  .log-viewport span {
+    color: #2d4254;
+  }
+  .log-viewport [data-level='TRACE']::before {
+    background: #84929e;
+  }
+  .log-viewport [data-level='TRACE'] b {
+    color: #6f7d88;
+  }
+  .log-viewport [data-level='DEBUG']::before {
+    background: #7868d8;
+  }
+  .log-viewport [data-level='DEBUG'] b {
+    color: #6555c6;
+  }
+  .log-viewport [data-level='INFO']::before {
+    background: #168be8;
+  }
+  .log-viewport [data-level='INFO'] b {
+    color: #0876d1;
+  }
+  .log-viewport .warn {
+    background: #fffaf0;
+  }
+  .log-viewport .warn::before {
+    background: #d79a2f;
+  }
+  .log-viewport .warn b {
+    color: #a66b08;
+  }
+  .log-viewport .error {
+    background: #fff7f6;
+  }
+  .log-viewport .error::before {
+    background: #d75b53;
+  }
+  .log-viewport .error b {
+    color: #c34d46;
+  }
+  .empty {
+    color: #7b8c9a;
+  }
+  .log-drawer footer {
+    border-top-color: #dce5ee;
+    background: #fff;
+    padding: 11px 20px;
+  }
+  .log-drawer footer button {
+    border-radius: 8px;
+    border: 1px solid #d6e6f1;
+    background: #f3f9fd;
+    color: #0876d1;
+  }
+  .log-drawer footer button:hover {
+    border-color: #bcd9eb;
+    background: #eaf5fc;
+  }
+  @keyframes log-drawer-in {
+    from {
+      opacity: 0;
+      transform: translateX(14px) scale(0.992);
+    }
+  }
+  @media (max-width: 620px) {
+    .log-drawer {
+      width: calc(100vw - 16px);
+      height: calc(100vh - 16px);
+      margin-right: 8px;
+      border-radius: 15px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .log-drawer[open] {
+      animation: none;
     }
   }
 </style>

@@ -1,7 +1,9 @@
 use std::{
     collections::HashSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
+    sync::{LazyLock, Mutex},
     time::Duration,
+    time::Instant,
 };
 
 use reqwest::{Response, StatusCode, Url, header::LOCATION};
@@ -11,6 +13,12 @@ const DNS_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const READ_TIMEOUT: Duration = Duration::from_secs(45);
 const MAX_REDIRECTS: usize = 5;
+const FAKE_IP_PROBE_HOST: &str = "music.gdstudio.xyz";
+const FAKE_IP_PROBE_PORT: u16 = 443;
+const FAKE_IP_CACHE_TTL: Duration = Duration::from_secs(60);
+
+static FAKE_IP_DNS_CACHE: LazyLock<Mutex<Option<(Instant, bool)>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 pub(crate) enum MediaGetError {
     Cancelled,
@@ -30,7 +38,18 @@ pub(crate) async fn safe_media_get(
         let host = url.host_str().ok_or(MediaGetError::Network)?.to_owned();
         let port = url.port_or_known_default().ok_or(MediaGetError::Network)?;
         let addresses = resolve_once(host.clone(), port, cancel).await?;
-        if addresses.is_empty() || addresses.iter().any(|addr| !is_public_ip(addr.ip())) {
+        let contains_fake_ip = addresses.iter().any(|addr| is_fake_ip(addr.ip()));
+        let fake_ip_dns_active = if contains_fake_ip && host.parse::<IpAddr>().is_err() {
+            detect_fake_ip_dns(cancel).await?
+        } else {
+            false
+        };
+        if !resolved_addresses_allowed(&url, &addresses, fake_ip_dns_active) {
+            log::warn!(
+                "媒体地址解析结果被安全策略拒绝 host={} fake_ip_dns_active={}",
+                host,
+                fake_ip_dns_active
+            );
             return Err(MediaGetError::Network);
         }
 
@@ -84,6 +103,49 @@ pub(crate) async fn safe_media_get(
 
         return Ok(response);
     }
+}
+
+async fn detect_fake_ip_dns(cancel: &CancellationToken) -> Result<bool, MediaGetError> {
+    if let Some(active) = cached_fake_ip_dns_state() {
+        return Ok(active);
+    }
+
+    let addresses = resolve_once(FAKE_IP_PROBE_HOST.to_owned(), FAKE_IP_PROBE_PORT, cancel).await?;
+    let active = !addresses.is_empty() && addresses.iter().all(|address| is_fake_ip(address.ip()));
+    *FAKE_IP_DNS_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some((Instant::now(), active));
+    if active {
+        log::info!("检测到透明代理 Fake-IP DNS，允许经 198.18.0.0/15 获取媒体资源");
+    }
+    Ok(active)
+}
+
+fn cached_fake_ip_dns_state() -> Option<bool> {
+    FAKE_IP_DNS_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .as_ref()
+        .filter(|(checked_at, _)| checked_at.elapsed() < FAKE_IP_CACHE_TTL)
+        .map(|(_, active)| *active)
+}
+
+fn resolved_addresses_allowed(
+    url: &Url,
+    addresses: &[SocketAddr],
+    fake_ip_dns_active: bool,
+) -> bool {
+    if addresses.is_empty() {
+        return false;
+    }
+    let fake_ip_alias_allowed = fake_ip_dns_active
+        && url
+            .host_str()
+            .is_some_and(|host| host.parse::<IpAddr>().is_err());
+    addresses.iter().all(|address| {
+        let ip = address.ip();
+        is_public_ip(ip) || (fake_ip_alias_allowed && is_fake_ip(ip))
+    })
 }
 
 async fn resolve_once(
@@ -159,6 +221,13 @@ fn is_public_ip(ip: IpAddr) -> bool {
     }
 }
 
+fn is_fake_ip(ip: IpAddr) -> bool {
+    matches!(normalize_ip(ip), IpAddr::V4(ipv4) if {
+        let [a, b, _, _] = ipv4.octets();
+        a == 198 && (b == 18 || b == 19)
+    })
+}
+
 fn is_public_ipv4(ip: Ipv4Addr) -> bool {
     let [a, b, c, _] = ip.octets();
     if a == 0
@@ -196,4 +265,54 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
         && !six_to_four
         && !former_sixbone
         && !documentation_v2
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn socket(ip: &str) -> SocketAddr {
+        SocketAddr::new(ip.parse().expect("test IP is valid"), 443)
+    }
+
+    #[test]
+    fn recognizes_only_the_benchmark_fake_ip_range() {
+        assert!(is_fake_ip("198.18.0.1".parse().unwrap()));
+        assert!(is_fake_ip("198.19.255.254".parse().unwrap()));
+        assert!(!is_fake_ip("198.17.255.255".parse().unwrap()));
+        assert!(!is_fake_ip("198.20.0.1".parse().unwrap()));
+        assert!(!is_fake_ip("2001:db8::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn allows_fake_ip_aliases_only_for_domain_names_in_detected_mode() {
+        let domain = Url::parse("https://media.example/audio.mp3").unwrap();
+        let literal = Url::parse("https://198.18.0.10/audio.mp3").unwrap();
+        let fake = [socket("198.18.0.10")];
+
+        assert!(!resolved_addresses_allowed(&domain, &fake, false));
+        assert!(resolved_addresses_allowed(&domain, &fake, true));
+        assert!(!resolved_addresses_allowed(&literal, &fake, true));
+    }
+
+    #[test]
+    fn fake_ip_mode_never_relaxes_private_network_blocking() {
+        let url = Url::parse("https://media.example/audio.mp3").unwrap();
+
+        assert!(!resolved_addresses_allowed(
+            &url,
+            &[socket("192.168.1.2")],
+            true
+        ));
+        assert!(!resolved_addresses_allowed(
+            &url,
+            &[socket("198.18.0.10"), socket("127.0.0.1")],
+            true
+        ));
+        assert!(resolved_addresses_allowed(
+            &url,
+            &[socket("8.8.8.8")],
+            false
+        ));
+    }
 }

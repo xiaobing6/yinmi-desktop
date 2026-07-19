@@ -5,8 +5,8 @@ use tauri::{AppHandle, Emitter};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-const REQUEST_LIMIT: usize = 50;
-const REQUEST_WINDOW: Duration = Duration::from_secs(5 * 60);
+const REQUEST_LIMIT: usize = 60;
+const REQUEST_WINDOW: Duration = Duration::from_secs(60);
 const DEFAULT_RETRY_AFTER: Duration = Duration::from_secs(30);
 const RATE_LIMIT_EVENT: &str = "music-rate-limit";
 

@@ -12,15 +12,15 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use thiserror::Error;
 
-use crate::signature::signature_webview::{SignatureError, SignatureRuntime};
 use crate::music::{
     contract::{
         ContractError, EncodedComponent, GdOperation, GdSource, PaginationDecision,
-        PaginationProbe, ParsedSearchPage, ProbeSong, SearchCount, SearchOperation, StopReason,
-        parse_search_page_lenient, render_form_body,
+        PaginationProbe, ParsedSearchPage, ProbeSong, SearchCount, SearchOperation, SearchPageSize,
+        StopReason, parse_search_page_lenient, render_form_body,
     },
     rate_limiter::MusicRateLimiter,
 };
+use crate::signature::signature_webview::{SignatureError, SignatureRuntime};
 
 const GD_API_URL: &str = "https://music.gdstudio.xyz/api.php";
 const MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
@@ -247,13 +247,14 @@ impl MusicSearchService {
 
         self.runtime.ensure_initialized().await?;
         let mut pagination = PaginationProbe::new(usize::from(count.get()), MAX_SEARCH_PAGES);
+        let page_size = SearchPageSize::for_target(count);
         let name = EncodedComponent::encode(&keyword);
         let mut page = 1;
         let mut skipped_records: usize = 0;
         let (stop_reason, incomplete) = loop {
             let operation = GdOperation::Search {
                 operation: request.mode,
-                count,
+                count: page_size,
                 source: request.source,
                 page,
                 name: name.clone(),

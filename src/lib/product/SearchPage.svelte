@@ -28,6 +28,8 @@
     type SourceCode,
   } from '../music/model';
   import RuntimeTools from './RuntimeTools.svelte';
+  import WindowControls from './WindowControls.svelte';
+  import { titlebar } from './windowChrome';
 
   type RetryTarget = string | 'all' | null;
 
@@ -40,7 +42,6 @@
   let errorMessage = '';
   let selected = new Set<string>();
   let requestSerial = 0;
-  let renderedSongCount = 150;
   let existingAudio = new Map<string, string[]>();
   let rateLimitSeconds = 0;
   let appVersion = '';
@@ -60,6 +61,7 @@
   let downloadItems = new Map<string, DownloadItemResult>();
   let cancellingScope: 'current' | 'all' | null = null;
   let retryingTarget: RetryTarget = null;
+  let retryPendingSongIds = new Set<string>();
 
   onMount(() => {
     let disposed = false;
@@ -83,6 +85,17 @@
       });
     void listen<DownloadProgress>('music-download-progress', (event) => {
       downloading = true;
+      if (event.payload.completedItem) {
+        downloadItems = new Map(downloadItems).set(
+          event.payload.completedItem.songId,
+          event.payload.completedItem,
+        );
+        if (retryPendingSongIds.has(event.payload.completedItem.songId)) {
+          const pending = new Set(retryPendingSongIds);
+          pending.delete(event.payload.completedItem.songId);
+          retryPendingSongIds = pending;
+        }
+      }
       downloadProgress = event.payload;
       if (event.payload.state === 'finished') cancellingScope = null;
     }).then((stop) => {
@@ -94,6 +107,7 @@
       downloading = false;
       cancellingScope = null;
       retryingTarget = null;
+      retryPendingSongIds = new Set();
       void scanExisting();
     }).then((stop) => {
       if (disposed) stop();
@@ -139,7 +153,6 @@
 
   function applySearchSnapshot(value: SearchResult, restoreForm = false) {
     result = value;
-    renderedSongCount = Math.min(150, value.songs.length);
     existingAudio = new Map();
     if (restoreForm) {
       keyword = value.keyword;
@@ -190,22 +203,6 @@
     }
   }
 
-  function handleTableScroll(event: Event) {
-    const viewport = event.currentTarget as HTMLElement;
-    if (
-      result &&
-      renderedSongCount < result.songs.length &&
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 240
-    ) {
-      renderedSongCount = Math.min(
-        result.songs.length,
-        renderedSongCount + 150,
-      );
-    }
-  }
-
-  const renderedSongs = () => result?.songs.slice(0, renderedSongCount) ?? [];
-
   const keyOf = (song: Song) => `${song.source}:${song.id}`;
   const downloadableSongs = () =>
     result?.songs.filter((song) => song.urlId) ?? [];
@@ -222,9 +219,9 @@
     downloadError = '';
     downloadItems = new Map();
     existingAudio = new Map();
-    renderedSongCount = 150;
     cancellingScope = null;
     retryingTarget = null;
+    retryPendingSongIds = new Set();
   }
 
   function searchSettingChanged() {
@@ -269,6 +266,20 @@
         downloadProgress.completed < downloadProgress.total
           ? 1
           : 0;
+      if (retryingTarget !== null) {
+        const settledItems = [...downloadItems.values()].filter(
+          (item) => !retryPendingSongIds.has(item.songId),
+        );
+        return {
+          waiting: Math.max(0, retryPendingSongIds.size - current),
+          current,
+          succeeded: countItems(settledItems, 'success'),
+          skipped: countItems(settledItems, 'skipped'),
+          failed: countItems(settledItems, 'failed'),
+          cancelled: countItems(settledItems, 'cancelled'),
+          total: downloadItems.size,
+        };
+      }
       return {
         waiting: Math.max(
           0,
@@ -316,6 +327,8 @@
     downloadError = '';
     downloadItems = new Map();
     cancellingScope = null;
+    retryingTarget = null;
+    retryPendingSongIds = new Set();
     try {
       const value = await invoke<SearchResult>('music_search', {
         request: context,
@@ -349,6 +362,8 @@
     const songs = selectedSongs();
     if (!result || songs.length === 0 || downloading) return;
     downloading = true;
+    retryingTarget = null;
+    retryPendingSongIds = new Set();
     downloadError = '';
     downloadResult = null;
     downloadProgress = {
@@ -362,6 +377,7 @@
       failed: 0,
       cancelled: 0,
       state: 'preparing',
+      completedItem: null,
       currentDownloadedBytes: 0,
       currentTotalBytes: null,
       bytesPerSecond: 0,
@@ -399,6 +415,7 @@
 
     downloading = true;
     retryingTarget = songId ?? 'all';
+    retryPendingSongIds = new Set(retryable.map((item) => item.songId));
     downloadError = '';
     downloadProgress = {
       batchId: 0,
@@ -411,6 +428,7 @@
       failed: 0,
       cancelled: 0,
       state: 'preparing',
+      completedItem: null,
       currentDownloadedBytes: 0,
       currentTotalBytes: null,
       bytesPerSecond: 0,
@@ -425,12 +443,16 @@
     } finally {
       downloading = false;
       retryingTarget = null;
+      retryPendingSongIds = new Set();
       cancellingScope = null;
     }
   }
 
-  async function restoreDefaultDirectory() {
-    if (downloading) return;
+  async function restoreDefaultPreferences() {
+    if (downloading || directoryLoading) return;
+    bitrate = 320;
+    embedCover = true;
+    downloadLyrics = true;
     if (defaultDirectory) {
       baseDirectory = defaultDirectory;
       directoryMessage = '';
@@ -504,35 +526,35 @@
 <svelte:head><title>音觅</title></svelte:head>
 
 <main class="shell">
-  <header class="topbar">
+  <header class="topbar" use:titlebar>
     <div class="mark" aria-hidden="true"><i></i><i></i><b></b></div>
-    <div>
+    <div class="brand-copy">
       <h1>音觅</h1>
-      <p>跨音源批量搜索与下载工作台</p>
+      <p>发现音乐，也收藏音乐</p>
+    </div>
+    <div
+      class:active={searching || downloading}
+      class:downloading
+      class="signal-rail"
+      aria-label={downloading ? '正在下载' : searching ? '正在搜索' : '准备就绪'}
+    >
+      <b></b>
+      <span>{downloading ? '正在下载' : searching ? '正在搜索' : '准备就绪'}</span>
+      <i></i>
     </div>
     <RuntimeTools />
-    <span class="version">DESKTOP{appVersion ? ` · ${appVersion}` : ''}</span>
+    <span class="version">v{appVersion || '0.1.3'}</span>
+    <WindowControls />
   </header>
-
-  <div
-    class:active={searching || downloading}
-    class:downloading
-    class="signal-rail"
-    aria-hidden="true"
-  >
-    <span>{downloading ? 'TRANSFER' : searching ? 'SCANNING' : 'READY'}</span>
-    <i></i>
-    <b></b>
-  </div>
 
   <div class="workspace">
   <aside class="search-panel" aria-label="搜索与下载设置">
     <header class="panel-heading">
-      <span>CONTROL DECK</span>
-      <h2>搜索与下载</h2>
-      <p>设置一次，然后从结果中挑选要带回本地的歌曲。</p>
+      <span>音乐搜索</span>
+      <h2>今天想听什么？</h2>
+      <p>输入一个线索，从多个音源找到合适的版本。</p>
     </header>
-    <div class="section-label"><span>DISCOVERY</span><b>搜索设置</b></div>
+    <div class="section-label"><span>搜索条件</span><b>发现音乐</b></div>
     <form
       onsubmit={(event) => {
         event.preventDefault();
@@ -588,9 +610,18 @@
       >
     </form>
     <p class="hint">数量范围 1–1000，三种匹配方式均返回歌曲列表。</p>
-    <div class="section-label download-label"
-      ><span>OUTPUT</span><b>下载设置</b></div
-    >
+    <div class="section-label download-label">
+      <span>保存偏好</span>
+      <div class="section-actions">
+        <b>带回本地</b>
+        <button
+          class="reset-directory"
+          type="button"
+          disabled={downloading || directoryLoading}
+          onclick={() => void restoreDefaultPreferences()}>恢复默认</button
+        >
+      </div>
+    </div>
     <div class="download-settings" aria-label="下载设置">
       <label class="quality-setting">
         <span>音质</span>
@@ -640,11 +671,6 @@
             disabled={downloading || directoryLoading}
             onclick={() => void chooseDirectory()}>选择</button
           >
-          <button
-            type="button"
-            disabled={downloading || directoryLoading}
-            onclick={() => void restoreDefaultDirectory()}>恢复默认</button
-          >
         </span>
       </label>
     </div>
@@ -665,16 +691,17 @@
   >
     <div class="heading">
       <div>
-        <span>RESULT MONITOR</span>
+        <span>音乐候选</span>
         <h2>
           {result?.keyword ??
-            (searching ? '正在连接音乐服务' : '从一个关键词开始')}
+            (searching ? '正在寻找合适的版本' : '从一首想听的歌开始')}
         </h2>
       </div>
       <div class="count">
-        <strong>{result?.returnedCount ?? 0}</strong><small
-          >首歌曲 · 已选 {selected.size}</small
-        >
+        <span class="result-total">
+          <strong>{result?.returnedCount ?? 0}</strong><small>首歌曲</small>
+        </span>
+        <span class="selected-count">已选 <b>{selected.size}</b></span>
       </div>
     </div>
 
@@ -721,20 +748,26 @@
           >
         </div>
       {/if}
-      <div class="table-wrap" onscroll={handleTableScroll}>
+      <div class="table-wrap">
         <table>
           <thead
             ><tr
-              ><th></th><th>#</th><th>歌曲</th><th>艺人</th><th>音源</th><th
-                >专辑</th
-              ><th>时长</th><th>能力</th><th>下载状态</th></tr
+              ><th></th><th>#</th><th>歌曲 / 歌手</th><th>专辑 / 音源</th><th
+                >时长</th
+              ><th>下载状态</th></tr
             ></thead
           >
           <tbody
-            >{#each renderedSongs() as song, index (keyOf(song))}
+            >{#each result.songs as song, index (keyOf(song))}
               {@const item = downloadItems.get(song.id)}
               {@const isCurrent =
-                downloading && downloadProgress?.currentSongId === song.id}
+                downloading &&
+                downloadProgress?.state !== 'finished' &&
+                downloadProgress?.currentSongId === song.id}
+              {@const isRetryPending =
+                downloading &&
+                retryingTarget !== null &&
+                retryPendingSongIds.has(song.id)}
               <tr class:selected={selected.has(keyOf(song))}>
                 <td
                   ><input
@@ -746,27 +779,23 @@
                     onchange={() => toggle(song)}
                   /></td
                 >
-                <td class="index">{index + 1}</td><td class="name"
-                  >{song.name}</td
-                ><td>{song.artistDisplay}</td><td class="source-name"
-                  >{sourceLabel(song.source)}</td
-                ><td>{song.album ?? '—'}</td><td class="duration"
-                  >{formatDuration(song.durationMs)}</td
-                >
-                <td
-                  ><div class="badges">
-                    {#if song.urlId}<span>音频</span>{/if}{#if song.picId}<span
-                        >封面</span
-                      >{/if}{#if song.lyricId}<span>歌词</span
-                      >{/if}{#if song.hasHires}<span>Hi-Res</span
-                      >{/if}{#if !song.urlId}<span class="muted">不可下载</span
-                      >{/if}
-                  </div></td
-                >
+                <td class="index">{index + 1}</td>
+                <td class="track-info">
+                  <strong class="name">{song.name}</strong>
+                  <small>{song.artistDisplay}</small>
+                </td>
+                <td class="album-info">
+                  <strong>{song.album ?? '—'}</strong>
+                  <small class="source-name">{sourceLabel(song.source)}</small>
+                </td>
+                <td class="duration">{formatDuration(song.durationMs)}</td>
                 <td class="status-cell">
                   <div class="status-line">
                     {#if isCurrent}<span class="status current"
                         >{retryingTarget ? '重试中' : '下载中'}</span
+                      >
+                    {:else if isRetryPending}<span class="status waiting"
+                        >等待</span
                       >
                     {:else if item?.state === 'success'}<span
                         class="status success">已下载</span
@@ -796,7 +825,7 @@
                           .toUpperCase()}</span
                       >
                     {:else}<span class="status idle">—</span>{/if}
-                    {#if item?.state === 'failed' || item?.state === 'cancelled'}
+                    {#if !isRetryPending && (item?.state === 'failed' || item?.state === 'cancelled')}
                       <button
                         class="retry-item"
                         type="button"
@@ -806,7 +835,7 @@
                       >
                     {/if}
                   </div>
-                  {#if item?.message && (item.state === 'failed' || item.state === 'cancelled')}
+                  {#if !isRetryPending && item?.message && (item.state === 'failed' || item.state === 'cancelled')}
                     <small class="item-message" title={item.message}
                       >{item.message}</small
                     >
@@ -828,12 +857,11 @@
       </div>
     {:else}
       <div class="empty-signal">
-        <div class="waveform" aria-hidden="true">
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i
-          ><i></i><i></i><i></i><i></i><i></i><i></i>
+        <div class="empty-record" aria-hidden="true">
+          <i></i><i></i><i></i><b></b>
         </div>
-        <strong>等待搜索信号</strong>
-        <span>输入关键词并选择音源，结果会显示在这里。</span>
+        <strong>先搜一首歌</strong>
+        <span>歌名、歌手、专辑，任何一个线索都可以。</span>
       </div>
     {/if}
   </section>
@@ -841,7 +869,9 @@
 
   <footer aria-label="下载队列">
     <div class="selected-summary">
-      <span>已选择</span><strong>{selected.size}</strong><span>首歌曲</span>
+      <div class="selected-summary-line">
+        <span>已选择</span><strong>{selected.size}</strong><span>首</span>
+      </div>
     </div>
     <div class="download-copy">
       {#if downloading && downloadProgress}
@@ -876,24 +906,15 @@
         <strong>下载队列已处理完成</strong><span
           title={downloadResult.directory}>{downloadResult.directory}</span
         >
-      {:else}
-        <strong
-          >音质档位 {bitrate} · {embedCover ? '嵌入封面' : '不嵌入封面'} · {downloadLyrics
-            ? '下载歌词'
-            : '不下载歌词'}</strong
-        ><span title={baseDirectory}
-          >{baseDirectory || '系统音乐目录'}/{result?.keyword ??
-            '搜索关键词'}</span
-        >
       {/if}
       <div class="queue-stats" aria-label="队列统计" aria-live="polite">
-        <span>等待 <b>{queueStats().waiting}</b></span>
-        <span>当前 <b>{queueStats().current}</b></span>
-        <span>成功 <b>{queueStats().succeeded}</b></span>
-        <span>跳过 <b>{queueStats().skipped}</b></span>
-        <span>失败 <b>{queueStats().failed}</b></span>
-        <span>取消 <b>{queueStats().cancelled}</b></span>
-        <span>总计 <b>{queueStats().total}</b></span>
+        <span class="waiting">等待 <b>{queueStats().waiting}</b></span>
+        <span class="current">当前 <b>{queueStats().current}</b></span>
+        <span class="succeeded">成功 <b>{queueStats().succeeded}</b></span>
+        <span class="skipped">跳过 <b>{queueStats().skipped}</b></span>
+        <span class="failed">失败 <b>{queueStats().failed}</b></span>
+        <span class="cancelled">取消 <b>{queueStats().cancelled}</b></span>
+        <span class="total">总计 <b>{queueStats().total}</b></span>
       </div>
       {#if downloadError}<span class="footer-error" role="alert"
           >{downloadError}</span
@@ -1228,10 +1249,6 @@
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 6px;
   }
-  .directory-control button:last-child {
-    grid-column: 1 / -1;
-    min-height: 30px;
-  }
   .directory-control button {
     border: 1px solid #aeb7ae;
     background: #f9faf8;
@@ -1396,21 +1413,6 @@
     color: #397250;
     font-size: 0.72rem;
   }
-  .badges {
-    display: flex;
-    gap: 4px;
-  }
-  .badges span {
-    border-radius: 3px;
-    background: #e2eee5;
-    padding: 3px 5px;
-    color: #356849;
-    font-size: 0.62rem;
-  }
-  .badges .muted {
-    background: #f0f1f2;
-    color: #89939c;
-  }
   .status {
     font-size: 0.7rem;
     font-weight: 700;
@@ -1511,50 +1513,6 @@
   }
   .empty-signal > span {
     font-size: 0.72rem;
-  }
-  .waveform {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    height: 72px;
-    margin-bottom: 7px;
-    border-inline: 1px solid #bec6be;
-    padding-inline: 18px;
-  }
-  .waveform i {
-    width: 3px;
-    height: 14px;
-    background: #6b7b72;
-  }
-  .waveform i:nth-child(2),
-  .waveform i:nth-child(14) {
-    height: 22px;
-  }
-  .waveform i:nth-child(3),
-  .waveform i:nth-child(6),
-  .waveform i:nth-child(11),
-  .waveform i:nth-child(13) {
-    height: 36px;
-  }
-  .waveform i:nth-child(4),
-  .waveform i:nth-child(10) {
-    height: 54px;
-    background: #2c8a54;
-  }
-  .waveform i:nth-child(5),
-  .waveform i:nth-child(9) {
-    height: 28px;
-  }
-  .waveform i:nth-child(7) {
-    height: 62px;
-    background: var(--signal-dark);
-  }
-  .waveform i:nth-child(8) {
-    height: 44px;
-    background: #2c8a54;
-  }
-  .waveform i:nth-child(12) {
-    height: 18px;
   }
   footer {
     display: flex;
@@ -1847,6 +1805,1440 @@
     .pulse,
     .signal-rail.active i {
       animation: none;
+    }
+  }
+
+  /* Listening-room visual system */
+  .shell {
+    --ink: #101827;
+    --ink-soft: #1b2638;
+    --paper: #eef1f7;
+    --panel: #ffffff;
+    --line: #dfe4ed;
+    --muted: #717b8d;
+    --signal: #8b7cff;
+    --signal-dark: #6757e8;
+    --apricot: #ff9a76;
+    --alert: #d95f58;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Segoe UI Variable Text', 'Microsoft YaHei UI',
+      'PingFang SC', sans-serif;
+  }
+  .topbar {
+    gap: 13px;
+    min-height: 72px;
+    border-bottom: 0;
+    background: var(--ink);
+    padding: 11px clamp(20px, 2.8vw, 38px);
+    color: #f8f9fc;
+  }
+  .brand-copy {
+    flex: 0 0 auto;
+  }
+  .topbar h1 {
+    font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
+    font-size: 1.25rem;
+    font-weight: 720;
+    letter-spacing: 0.11em;
+  }
+  .topbar p {
+    margin-top: 1px;
+    color: #8f9aae;
+    font-size: 0.64rem;
+  }
+  .mark {
+    width: 42px;
+    height: 42px;
+    border: 1px solid #ffffff24;
+    border-radius: 50%;
+    background: var(--ink-soft);
+  }
+  .mark i {
+    border-color: #aeb7c8;
+  }
+  .mark i:first-child {
+    inset: 9px;
+  }
+  .mark i:nth-child(2) {
+    inset: 16px;
+  }
+  .mark b {
+    right: 4px;
+    top: 4px;
+    width: 9px;
+    height: 9px;
+    background: var(--apricot);
+    box-shadow: 0 0 0 4px #ff9a7618;
+  }
+  .signal-rail {
+    display: flex;
+    grid-template-columns: none;
+    align-items: center;
+    gap: 7px;
+    width: max-content;
+    min-height: 28px;
+    margin-left: 12px;
+    border: 1px solid #ffffff13;
+    border-radius: 999px;
+    background: #ffffff08;
+    padding: 0 11px;
+    color: #929db0;
+    font: 600 0.62rem/1 'Microsoft YaHei UI', sans-serif;
+    letter-spacing: 0.04em;
+  }
+  .signal-rail b {
+    width: 6px;
+    height: 6px;
+    background: #6f7a8e;
+  }
+  .signal-rail i {
+    display: none;
+  }
+  .signal-rail.active {
+    color: #d4cffc;
+  }
+  .signal-rail.active b {
+    background: var(--signal);
+    box-shadow: 0 0 0 4px #8b7cff20;
+    animation: status-breathe 1.25s ease-in-out infinite;
+  }
+  .version {
+    border-left: 1px solid #ffffff13;
+    padding-left: 12px;
+    color: #707c91;
+    font: 600 0.62rem/1 'Cascadia Code', Consolas, monospace;
+  }
+  .workspace {
+    grid-template-columns: minmax(294px, 326px) minmax(0, 1fr);
+    gap: 16px;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--paper);
+    padding: 16px 18px;
+  }
+  .search-panel {
+    border: 1px solid #e2e6ef;
+    border-radius: 20px;
+    background: var(--panel);
+    padding: 23px 22px 25px;
+    box-shadow: 0 10px 34px #25324b0a;
+    scrollbar-color: #cbd1de transparent;
+    scrollbar-width: thin;
+  }
+  .panel-heading {
+    margin-bottom: 25px;
+  }
+  .panel-heading span,
+  .section-label span,
+  .heading > div > span {
+    color: #8b7cff;
+    font: 700 0.64rem/1 'Microsoft YaHei UI', sans-serif;
+    letter-spacing: 0.1em;
+  }
+  .panel-heading h2 {
+    margin: 8px 0 7px;
+    font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
+    font-size: 1.45rem;
+    font-weight: 720;
+    letter-spacing: -0.035em;
+  }
+  .panel-heading p {
+    color: #7b8596;
+    font-size: 0.7rem;
+    line-height: 1.65;
+  }
+  .section-label {
+    margin-bottom: 13px;
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+  .section-label b {
+    color: #9ba4b3;
+    font-size: 0.64rem;
+    font-weight: 500;
+  }
+  .section-label.download-label {
+    margin-top: 27px;
+    border-top: 1px solid var(--line);
+    padding-top: 21px;
+  }
+  form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 10px;
+  }
+  form .keyword {
+    grid-column: 1 / -1;
+  }
+  form label:nth-of-type(2),
+  form label:nth-of-type(3) {
+    grid-column: auto;
+  }
+  form label > span,
+  .quality-setting > span,
+  .directory-setting > span:first-child {
+    color: #626d7e;
+    font-size: 0.67rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+  }
+  input:not([type='checkbox']),
+  select {
+    height: 42px;
+    border: 1px solid #d8deea;
+    border-radius: 10px;
+    background: #f8f9fc;
+    padding: 0 12px;
+    color: #1b2433;
+    font-family: inherit;
+  }
+  .keyword input {
+    height: 50px;
+    background: #f4f2ff;
+    border-color: #d8d2ff;
+    font-size: 0.86rem;
+  }
+  input::placeholder {
+    color: #9da5b3;
+  }
+  input:focus,
+  select:focus,
+  button:focus-visible {
+    border-color: var(--signal);
+    outline: none;
+    box-shadow: 0 0 0 3px #8b7cff24;
+  }
+  button {
+    border-radius: 9px;
+  }
+  .primary {
+    height: 42px;
+    border: 1px solid transparent;
+    background: var(--ink);
+    color: white;
+    transition:
+      transform 160ms ease,
+      background 160ms ease;
+  }
+  .primary:hover:not(:disabled) {
+    background: #26334a;
+    transform: translateY(-1px);
+  }
+  .hint {
+    margin-top: 8px;
+    color: #8c95a4;
+    font-size: 0.63rem;
+  }
+  .download-settings {
+    gap: 10px;
+  }
+  .toggle-setting {
+    gap: 9px;
+    height: 44px;
+    border-color: #dfe4ed;
+    border-radius: 11px;
+    background: #f8f9fc;
+    padding: 0 10px;
+  }
+  .toggle-setting input,
+  .check {
+    accent-color: var(--signal-dark);
+  }
+  .toggle-setting span {
+    color: #3d4756;
+  }
+  .toggle-setting strong {
+    font-size: 0.69rem;
+  }
+  .toggle-setting small {
+    color: #929bab;
+    font-size: 0.58rem;
+  }
+  .directory-control {
+    gap: 7px;
+  }
+  .directory-control button {
+    border-color: #d8deea;
+    border-radius: 9px;
+    background: #f4f5f9;
+    color: #465166;
+    font-size: 0.66rem;
+  }
+  .directory-message {
+    margin-top: 7px;
+    color: #8c95a4;
+    font-size: 0.62rem;
+  }
+  .results {
+    border: 1px solid #e2e6ef;
+    border-radius: 20px;
+    background: #fff;
+    padding: 24px 24px 20px;
+    box-shadow: 0 10px 34px #25324b0a;
+  }
+  .heading {
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  .heading h2 {
+    margin-top: 7px;
+    font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
+    font-size: clamp(1.35rem, 2vw, 1.75rem);
+    font-weight: 720;
+    letter-spacing: -0.035em;
+  }
+  .count {
+    gap: 7px;
+    border: 1px solid #e6e9f0;
+    border-radius: 13px;
+    background: #f8f9fc;
+    padding: 9px 12px;
+  }
+  .count strong {
+    color: var(--signal-dark);
+    font: 720 1.35rem/1 'Segoe UI Variable Display', sans-serif;
+  }
+  .count small {
+    color: #7e8797;
+    font-size: 0.65rem;
+  }
+  .message {
+    height: calc(100% - 78px);
+    border: 0;
+    border-radius: 16px;
+    background: #f8f9fc;
+    color: #7e8797;
+  }
+  .message.error {
+    border: 1px solid #f0cbc6;
+    background: #fff5f3;
+  }
+  .message button {
+    border-radius: 999px;
+    background: var(--ink);
+  }
+  .pulse {
+    background: var(--signal);
+  }
+  .toolbar {
+    min-height: 42px;
+    border: 1px solid #e5e8ef;
+    border-bottom: 0;
+    border-radius: 12px 12px 0 0;
+    background: #f8f9fc;
+    padding: 0 13px;
+    color: #7d8797;
+    font-size: 0.68rem;
+  }
+  .toolbar button {
+    color: var(--signal-dark);
+  }
+  .partial-warning {
+    border-color: #f2d9a8;
+    background: #fff9ec;
+  }
+  .table-wrap {
+    border-color: #e5e8ef;
+    border-radius: 0 0 12px 12px;
+    background: #fff;
+    scrollbar-color: #c9cfdb transparent;
+    scrollbar-width: thin;
+  }
+  table {
+    min-width: 840px;
+    font-size: 0.75rem;
+  }
+  th {
+    background: #f0f2f7;
+    color: #7c8697;
+    padding: 10px 9px;
+    font-size: 0.63rem;
+    font-weight: 650;
+  }
+  td {
+    max-width: 220px;
+    border-top-color: #eceef3;
+    padding: 10px 9px;
+    color: #677183;
+  }
+  tbody tr {
+    transition: background 140ms ease;
+  }
+  tbody tr:hover td {
+    background: #fafaff;
+  }
+  tr.selected td,
+  tr.selected:hover td {
+    background: #f0efff;
+  }
+  .name {
+    color: #202a3b;
+    font-weight: 700;
+  }
+  .source-name {
+    color: var(--signal-dark);
+  }
+  .status.current,
+  .status.success {
+    color: #6757e8;
+  }
+  .retry-item {
+    border-radius: 999px;
+    background: #eeecff;
+    color: #6757e8;
+  }
+  .empty-signal {
+    gap: 9px;
+    border: 0;
+    border-radius: 16px;
+    background-color: #f8f9fc;
+    background-image: none;
+    color: #8993a3;
+  }
+  .empty-signal strong {
+    margin-top: 8px;
+    color: #283247;
+    font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .empty-signal > span {
+    font-size: 0.7rem;
+  }
+  .empty-record {
+    position: relative;
+    width: 142px;
+    height: 142px;
+    margin-bottom: 4px;
+    border: 1px solid #dfe2ee;
+    border-radius: 50%;
+    background: #f1f0ff;
+    box-shadow: 0 24px 50px #48406516;
+  }
+  .empty-record::before,
+  .empty-record::after,
+  .empty-record i,
+  .empty-record b {
+    position: absolute;
+    border-radius: 50%;
+    content: '';
+  }
+  .empty-record::before {
+    inset: 16px;
+    border: 1px solid #d4d0ef;
+  }
+  .empty-record::after {
+    inset: 34px;
+    border: 1px solid #d4d0ef;
+  }
+  .empty-record i:first-child {
+    inset: 50px;
+    background: var(--signal);
+    box-shadow: 0 0 0 10px #8b7cff12;
+  }
+  .empty-record i:nth-child(2) {
+    inset: 65px;
+    background: #fff;
+  }
+  .empty-record i:nth-child(3) {
+    right: 14px;
+    top: 22px;
+    width: 10px;
+    height: 10px;
+    background: var(--apricot);
+    box-shadow: 0 0 0 7px #ff9a7614;
+  }
+  .empty-record b {
+    right: 22px;
+    bottom: 22px;
+    width: 38px;
+    height: 2px;
+    border-radius: 2px;
+    background: #b3accf;
+    transform: rotate(-36deg);
+    transform-origin: right;
+  }
+  footer {
+    gap: 18px;
+    min-height: 78px;
+    max-height: 104px;
+    border-top: 0;
+    background: var(--ink);
+    padding: 10px clamp(20px, 2.8vw, 38px);
+  }
+  footer span {
+    color: #909caf;
+    font-size: 0.67rem;
+  }
+  .selected-summary {
+    gap: 6px;
+    border-right: 1px solid #ffffff13;
+    padding-right: 18px;
+  }
+  .selected-summary strong {
+    color: var(--apricot);
+    font: 720 1.4rem/1 'Segoe UI Variable Display', sans-serif;
+  }
+  .download-copy strong {
+    color: #f1f3f7;
+    font-size: 0.7rem;
+  }
+  .download-copy progress {
+    accent-color: var(--signal);
+  }
+  .queue-stats span {
+    color: #7f8ba0;
+    font-size: 0.6rem;
+  }
+  .queue-stats b {
+    color: #cbd2de;
+  }
+  .open,
+  .download,
+  .cancel,
+  .retry-all {
+    border-radius: 999px;
+    padding: 10px 16px;
+  }
+  .open,
+  .retry-all,
+  .cancel {
+    background: #ffffff12;
+    color: #e6e9ef;
+  }
+  .download {
+    background: var(--signal);
+    color: #fff;
+  }
+  .download:hover:not(:disabled) {
+    background: #9b8eff;
+  }
+  .cancel.all {
+    background: #b5514e;
+  }
+  @keyframes status-breathe {
+    50% {
+      opacity: 0.45;
+      transform: scale(0.75);
+    }
+  }
+  @media (max-width: 1120px) and (min-width: 761px) {
+    .workspace {
+      grid-template-columns: 280px minmax(0, 1fr);
+      padding-inline: 12px;
+    }
+    .search-panel {
+      padding-inline: 17px;
+    }
+    table {
+      min-width: 740px;
+    }
+    th:nth-child(5),
+    td:nth-child(5),
+    th:nth-child(6),
+    td:nth-child(6) {
+      display: none;
+    }
+  }
+  @media (max-width: 760px) {
+    .shell {
+      grid-template-rows: auto auto auto;
+    }
+    .topbar {
+      min-height: 66px;
+      padding-inline: 18px;
+    }
+    .signal-rail {
+      margin-left: auto;
+    }
+    .workspace {
+      grid-template-columns: 1fr;
+      gap: 12px;
+      overflow: visible;
+      padding: 12px;
+    }
+    .search-panel {
+      border: 1px solid #e2e6ef;
+      border-radius: 17px;
+    }
+    .results {
+      min-height: 520px;
+      border-radius: 17px;
+      padding: 20px 15px 16px;
+    }
+    footer {
+      min-height: 110px;
+      padding: 10px 14px;
+    }
+  }
+  @media (max-width: 540px) {
+    .topbar p,
+    .version {
+      display: none;
+    }
+    .mark {
+      width: 38px;
+      height: 38px;
+    }
+    .signal-rail {
+      padding-inline: 9px;
+    }
+    form {
+      grid-template-columns: 1fr;
+    }
+    form .keyword,
+    form label:nth-of-type(2),
+    form label:nth-of-type(3),
+    form label:nth-of-type(4),
+    form .primary {
+      grid-column: 1;
+    }
+    .count {
+      padding: 8px 9px;
+    }
+    .count small {
+      display: none;
+    }
+    .empty-record {
+      width: 122px;
+      height: 122px;
+    }
+    .empty-record i:first-child {
+      inset: 42px;
+    }
+    .empty-record i:nth-child(2) {
+      inset: 56px;
+    }
+  }
+  @media (max-height: 620px) and (min-width: 761px) {
+    .topbar {
+      min-height: 58px;
+      padding-block: 7px;
+    }
+    .workspace {
+      padding-block: 10px;
+    }
+    .search-panel,
+    .results {
+      border-radius: 15px;
+      padding-block: 14px;
+    }
+    footer {
+      min-height: 70px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .signal-rail.active b,
+    .primary,
+    tbody tr {
+      animation: none;
+      transition: none;
+    }
+  }
+
+  /* Yinmi blue-and-white music library */
+  .shell {
+    --ink: #1d1d1f;
+    --ink-soft: #334252;
+    --paper: #f6fafe;
+    --panel: #f2f8fd;
+    --line: #dce5ee;
+    --muted: #6e7886;
+    --signal: #168be8;
+    --signal-dark: #0876d1;
+    --action: #0876d1;
+    --action-hover: #066fc4;
+    --apricot: #64d2af;
+    --alert: #d75b53;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Segoe UI Variable Text', 'Microsoft YaHei UI',
+      'PingFang SC', sans-serif;
+  }
+  .topbar {
+    gap: 12px;
+    min-height: 72px;
+    border-bottom: 1px solid var(--line);
+    background: #ffffffed;
+    padding: 10px clamp(20px, 2.5vw, 34px);
+    color: var(--ink);
+    box-shadow: 0 1px 12px #168be810;
+    backdrop-filter: blur(18px);
+    user-select: none;
+  }
+  .brand-copy {
+    flex: 0 0 auto;
+  }
+  .topbar h1 {
+    color: var(--ink);
+    font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
+    font-size: 1.32rem;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+  }
+  .topbar p {
+    color: #718295;
+    font-size: 0.7rem;
+  }
+  .mark {
+    width: 43px;
+    height: 43px;
+    border: 0;
+    border-radius: 11px;
+    background: var(--signal);
+    box-shadow: 0 8px 24px #168be824;
+  }
+  .mark i {
+    border-width: 3px;
+  }
+  .mark i:first-child {
+    inset: 8px;
+    border-color: #f7fbff;
+  }
+  .mark i:nth-child(2) {
+    inset: 15px;
+    border-color: #a8deff;
+  }
+  .mark b {
+    right: 3px;
+    top: 3px;
+    width: 10px;
+    height: 10px;
+    border: 2px solid #fff;
+    background: #64d2af;
+    box-shadow: none;
+  }
+  .signal-rail {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: max-content;
+    height: 32px;
+    margin-left: 14px;
+    border: 1px solid #d6e9f7;
+    border-radius: 999px;
+    background: #f2f9fe;
+    padding: 0 11px;
+    color: #5f7385;
+    font: 650 0.68rem/1 'Microsoft YaHei UI', sans-serif;
+    letter-spacing: 0.03em;
+  }
+  .signal-rail b {
+    width: 6px;
+    height: 6px;
+    background: #64d2af;
+    box-shadow: 0 0 0 4px #64d2af1d;
+  }
+  .signal-rail i {
+    display: none;
+  }
+  .signal-rail.active {
+    color: var(--signal-dark);
+  }
+  .signal-rail.active b {
+    background: var(--signal);
+    box-shadow: 0 0 0 4px #168be819;
+  }
+  .version {
+    display: flex;
+    align-items: center;
+    height: 32px;
+    border-left: 1px solid var(--line);
+    padding-left: 12px;
+    color: #8a98a6;
+    font: 600 0.66rem/1 'Cascadia Code', Consolas, monospace;
+  }
+  .workspace {
+    grid-template-columns: minmax(300px, 326px) minmax(0, 1fr);
+    gap: 0;
+    background: #fff;
+    padding: 0;
+  }
+  .search-panel {
+    border: 0;
+    border-right: 1px solid var(--line);
+    border-radius: 0;
+    background: #f2f7fb;
+    padding: 23px 21px 28px;
+    box-shadow: none;
+    scrollbar-color: #bdcad5 transparent;
+  }
+  .panel-heading {
+    margin-bottom: 25px;
+  }
+  .panel-heading span,
+  .section-label span,
+  .heading > div > span {
+    color: var(--signal-dark);
+    font: 700 0.68rem/1 'Microsoft YaHei UI', sans-serif;
+    letter-spacing: 0.08em;
+  }
+  .panel-heading h2 {
+    margin: 8px 0 7px;
+    color: var(--ink);
+    font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 750;
+    letter-spacing: -0.035em;
+  }
+  .panel-heading p {
+    color: #718295;
+    font-size: 0.73rem;
+  }
+  .section-label {
+    margin-bottom: 12px;
+    border-bottom: 1px solid #dce5ee;
+    padding-bottom: 8px;
+  }
+  .section-label b {
+    color: #6d7b89;
+    font-size: 0.68rem;
+    font-weight: 600;
+  }
+  .section-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .reset-directory {
+    border: 0;
+    border-left: 1px solid #cfdae4;
+    border-radius: 0;
+    background: transparent;
+    padding: 0 0 0 8px;
+    color: var(--signal-dark);
+    font-size: 0.68rem;
+    font-weight: 650;
+    line-height: 1;
+  }
+  .reset-directory:hover:not(:disabled) {
+    color: var(--action-hover);
+  }
+  .section-label.download-label {
+    margin-top: 25px;
+    border-top: 0;
+    padding-top: 0;
+  }
+  form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px 9px;
+  }
+  form .keyword {
+    grid-column: 1 / -1;
+  }
+  form label:nth-of-type(2),
+  form label:nth-of-type(3) {
+    grid-column: auto;
+  }
+  form label > span,
+  .quality-setting > span,
+  .directory-setting > span:first-child {
+    color: #566879;
+    font-size: 0.69rem;
+    font-weight: 650;
+  }
+  input:not([type='checkbox']),
+  select {
+    height: 40px;
+    border: 1px solid #cedae5;
+    border-radius: 8px;
+    background: #fff;
+    padding: 0 11px;
+    color: var(--ink);
+  }
+  .keyword input {
+    height: 46px;
+    border-color: #b9d9ef;
+    background: #fff;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 16px #168be809;
+  }
+  input::placeholder {
+    color: #9aa7b3;
+  }
+  input:focus,
+  select:focus,
+  button:focus-visible {
+    border-color: var(--signal);
+    outline: none;
+    box-shadow: 0 0 0 3px #168be821;
+  }
+  button {
+    border-radius: 8px;
+  }
+  .primary {
+    height: 40px;
+    border: 1px solid transparent;
+    background: var(--action);
+    color: #fff;
+    transition:
+      transform 150ms ease,
+      background 150ms ease;
+  }
+  .primary:hover:not(:disabled) {
+    background: var(--action-hover);
+    transform: translateY(-1px);
+  }
+  .hint {
+    color: #83919f;
+    font-size: 0.65rem;
+  }
+  .download-settings {
+    gap: 9px;
+  }
+  .toggle-setting {
+    height: 42px;
+    border-color: #d4dfe8;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .toggle-setting input,
+  .check {
+    accent-color: var(--signal);
+  }
+  .toggle-setting span {
+    color: #3c4d5d;
+  }
+  .toggle-setting strong {
+    font-size: 0.74rem;
+  }
+  .toggle-setting small {
+    color: #8795a2;
+    font-size: 0.64rem;
+  }
+  .directory-control button {
+    border-color: #cedae5;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--signal-dark);
+    font-size: 0.72rem;
+  }
+  .directory-message {
+    color: #83919f;
+    font-size: 0.66rem;
+  }
+  .results {
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+    padding: 24px clamp(20px, 2.4vw, 32px) 18px;
+    box-shadow: none;
+  }
+  .heading {
+    align-items: center;
+    margin-bottom: 17px;
+  }
+  .heading h2 {
+    margin-top: 7px;
+    color: var(--ink);
+    font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
+    font-size: clamp(1.5rem, 2vw, 1.8rem);
+    font-weight: 750;
+    letter-spacing: -0.04em;
+  }
+  .count {
+    display: flex;
+    align-items: baseline;
+    justify-content: end;
+    gap: 7px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+  }
+  .count strong {
+    color: var(--signal);
+    font: 720 1.9rem/1 'Segoe UI Variable Display', sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .result-total {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .count small {
+    display: block;
+    flex: 0 0 auto;
+    color: #6e7886;
+    font-size: 0.7rem;
+    white-space: nowrap;
+  }
+  .selected-count {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: baseline;
+    gap: 3px;
+    border: 0;
+    border-left: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
+    padding-left: 8px;
+    color: #687b8c;
+    font-size: 0.68rem;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  .selected-count b {
+    display: inline-block;
+    width: 3ch;
+    color: var(--signal-dark);
+    font: 750 0.72rem/1 'Segoe UI Variable Text', sans-serif;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .message {
+    height: calc(100% - 76px);
+    border: 1px solid #e0e9f0;
+    border-radius: 12px;
+    background: #f8fbfd;
+    color: #71808e;
+  }
+  .message button {
+    background: var(--action);
+  }
+  .message.error {
+    border-color: #efcbc6;
+    background: #fff8f7;
+  }
+  .pulse {
+    background: var(--signal);
+  }
+  .toolbar {
+    min-height: 40px;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    border-radius: 12px 12px 0 0;
+    background: #f8fbfd;
+    color: #6f7e8d;
+    font-size: 0.76rem;
+  }
+  .toolbar button {
+    color: var(--signal-dark);
+  }
+  .partial-warning {
+    border-color: #ead7a5;
+    background: #fffaf0;
+  }
+  .table-wrap {
+    border-color: var(--line);
+    border-radius: 0 0 12px 12px;
+    background: #fff;
+    scrollbar-color: #bdcad5 transparent;
+  }
+  table {
+    min-width: 710px;
+    table-layout: fixed;
+    font-size: 0.78rem;
+  }
+  th {
+    background: #f2f6f9;
+    color: #687787;
+    padding: 9px 10px;
+    font-size: 0.67rem;
+    font-weight: 650;
+  }
+  th:first-child,
+  td:first-child {
+    width: 42px;
+    padding-inline: 12px 4px;
+  }
+  th:nth-child(2),
+  td:nth-child(2) {
+    width: 56px;
+    padding-inline: 6px;
+    text-align: center;
+  }
+  th:nth-child(3),
+  td:nth-child(3) {
+    width: 34%;
+  }
+  th:nth-child(4),
+  td:nth-child(4) {
+    width: auto;
+  }
+  th:nth-child(5),
+  td:nth-child(5) {
+    width: 70px;
+    text-align: center;
+  }
+  th:nth-child(6),
+  td:nth-child(6) {
+    width: 120px;
+  }
+  td {
+    max-width: none;
+    border-top-color: #e7edf2;
+    padding: 9px 10px;
+    color: #637383;
+  }
+  tbody tr:hover td {
+    background: #f7fbfe;
+  }
+  tr.selected td,
+  tr.selected:hover td {
+    background: #eaf6ff;
+  }
+  .track-info,
+  .album-info {
+    overflow: hidden;
+    white-space: normal;
+  }
+  .track-info strong,
+  .track-info small,
+  .album-info strong,
+  .album-info small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .track-info strong,
+  .album-info strong {
+    color: #273746;
+    font-size: 0.78rem;
+    font-weight: 650;
+  }
+  .track-info small,
+  .album-info small {
+    margin-top: 3px;
+    color: #8794a0;
+    font-size: 0.67rem;
+  }
+  .track-info .name {
+    color: var(--ink);
+    font-weight: 720;
+  }
+  .album-info .source-name {
+    color: var(--signal-dark);
+  }
+  .duration {
+    color: #536575;
+  }
+  .index {
+    font-variant-numeric: tabular-nums;
+    text-overflow: clip;
+  }
+  .status-cell {
+    min-width: 0;
+  }
+  .status {
+    font-size: 0.72rem;
+  }
+  .retry-item,
+  .item-message,
+  .warnings {
+    font-size: 0.66rem;
+  }
+  .status.current,
+  .status.success {
+    color: var(--signal-dark);
+  }
+  .status.skipped {
+    color: #668775;
+  }
+  .retry-item {
+    border-radius: 999px;
+    background: #e3f2fc;
+    color: var(--signal-dark);
+  }
+  .empty-signal {
+    border: 1px solid #e0e9f0;
+    border-radius: 12px;
+    background: #f8fbfd;
+    color: #7b8996;
+  }
+  .empty-signal strong {
+    color: #273746;
+    font-size: 1.1rem;
+  }
+  .empty-signal > span {
+    font-size: 0.76rem;
+  }
+  .empty-record {
+    border-color: #d6e8f5;
+    background: #edf8ff;
+    box-shadow: 0 20px 46px #168be812;
+  }
+  .empty-record::before,
+  .empty-record::after {
+    border-color: #c5e1f3;
+  }
+  .empty-record i:first-child {
+    background: var(--signal);
+    box-shadow: 0 0 0 10px #168be810;
+  }
+  .empty-record i:nth-child(3) {
+    background: #64d2af;
+    box-shadow: 0 0 0 7px #64d2af18;
+  }
+  .empty-record b {
+    background: #7fbce4;
+  }
+  footer {
+    gap: 16px;
+    min-height: 95px;
+    max-height: 108px;
+    border-top: 1px solid var(--line);
+    background: #ffffffef;
+    padding: 8px clamp(20px, 2.5vw, 34px);
+    color: var(--ink);
+    box-shadow: 0 -8px 24px #168be808;
+    backdrop-filter: blur(18px);
+  }
+  footer span {
+    color: #6f7f8e;
+    font-size: 0.72rem;
+  }
+  .selected-summary {
+    width: 124px;
+    align-items: center;
+    gap: 0;
+    height: 32px;
+    border-right: 1px solid var(--line);
+    padding-right: 17px;
+  }
+  .selected-summary span {
+    flex: 0 0 auto;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .selected-summary-line {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    height: 32px;
+    padding-bottom: 5px;
+    white-space: nowrap;
+  }
+  .selected-summary strong {
+    display: inline-block;
+    min-width: 3ch;
+    color: var(--signal);
+    font: 720 1.4rem/1 'Segoe UI Variable Display', sans-serif;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  .download-copy strong {
+    color: #263746;
+    font-size: 0.75rem;
+  }
+  .download-copy progress {
+    accent-color: var(--signal);
+  }
+  .queue-stats {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    gap: 3px 7px;
+    height: 32px;
+    min-height: 32px;
+    margin-top: 0;
+    padding-bottom: 5px;
+  }
+  .queue-stats span {
+    display: inline-flex;
+    align-items: flex-end;
+    width: auto;
+    gap: 2px;
+    color: #80909f;
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .queue-stats b {
+    display: inline-block;
+    min-width: 3ch;
+    color: currentColor;
+    font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    text-align: right;
+  }
+  .queue-stats .waiting {
+    color: #718191;
+  }
+  .queue-stats .current {
+    color: var(--signal-dark);
+  }
+  .queue-stats .succeeded {
+    color: #258367;
+  }
+  .queue-stats .skipped {
+    color: #9a6a18;
+  }
+  .queue-stats .failed {
+    color: #c44f48;
+  }
+  .queue-stats .cancelled {
+    color: #7c8793;
+  }
+  .queue-stats .total {
+    color: #344f65;
+  }
+  .footer-error {
+    color: #c44f48 !important;
+    font-size: 0.72rem;
+  }
+  .open,
+  .download,
+  .cancel,
+  .retry-all {
+    border-radius: 8px;
+    padding: 10px 16px;
+  }
+  .open,
+  .retry-all,
+  .cancel {
+    border: 1px solid #cfe0ed;
+    background: #f2f8fc;
+    color: var(--signal-dark);
+  }
+  .download {
+    min-width: 144px;
+    background: var(--action);
+    color: #fff;
+    box-shadow: 0 8px 22px #168be825;
+  }
+  .download:hover:not(:disabled) {
+    background: var(--action-hover);
+  }
+  .cancel.all {
+    border-color: #ebc3bf;
+    background: #fff5f4;
+    color: #bc4d46;
+  }
+  @media (max-width: 1120px) and (min-width: 761px) {
+    .workspace {
+      grid-template-columns: 280px minmax(0, 1fr);
+    }
+    .search-panel {
+      padding-inline: 17px;
+    }
+    table {
+      min-width: 680px;
+    }
+    th:nth-child(5),
+    td:nth-child(5),
+    th:nth-child(6),
+    td:nth-child(6) {
+      display: table-cell;
+    }
+  }
+  @media (max-width: 760px) {
+    .topbar {
+      padding-inline: 16px;
+    }
+    .workspace {
+      grid-template-columns: 1fr;
+      gap: 0;
+      padding: 0;
+    }
+    .search-panel {
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+    }
+    .results {
+      border-radius: 0;
+    }
+  }
+  @media (max-width: 540px) {
+    .count small {
+      display: none;
+    }
+  }
+  @media (max-height: 850px) and (min-width: 761px) {
+    .topbar {
+      min-height: 66px;
+      padding-block: 8px;
+    }
+    .search-panel {
+      padding-block: 20px 16px;
+    }
+    .panel-heading {
+      margin-bottom: 22px;
+    }
+    .section-label.download-label {
+      margin-top: 22px;
+    }
+    form {
+      gap: 10px 9px;
+    }
+    .results {
+      padding-top: 22px;
+    }
+    footer {
+      min-height: 58px;
+      padding-block: 6px;
+    }
+  }
+  @media (max-height: 620px) and (min-width: 761px) {
+    .topbar {
+      min-height: 58px;
+    }
+    .search-panel,
+    .results {
+      border-radius: 0;
+      padding-block: 13px;
+    }
+    .panel-heading {
+      margin-bottom: 14px;
+    }
+    .panel-heading h2 {
+      margin-block: 6px 4px;
+    }
+    .panel-heading p {
+      line-height: 1.4;
+    }
+    .section-label {
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+    }
+    .section-label.download-label {
+      margin-top: 14px;
+    }
+    form {
+      gap: 8px 9px;
+    }
+    label {
+      gap: 4px;
+    }
+    input:not([type='checkbox']),
+    select,
+    .primary {
+      height: 38px;
+    }
+    .keyword input {
+      height: 42px;
+    }
+    .hint {
+      margin-top: 5px;
+      line-height: 1.4;
+    }
+    .download-settings {
+      gap: 7px 9px;
+    }
+    .toggle-setting {
+      height: 38px;
+    }
+    .directory-message {
+      margin-top: 4px;
+      line-height: 1.35;
+    }
+    footer {
+      min-height: 58px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .primary,
+    tbody tr {
+      transition: none;
     }
   }
 </style>
