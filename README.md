@@ -40,23 +40,101 @@ Windows 安装包目前没有 Authenticode 商业代码签名，可能出现 Sma
 
 ## 本地开发
 
-环境要求：
+本项目同时包含 Svelte 前端和 Rust/Tauri 桌面端。仅运行 `pnpm dev` 只会启动前端页面；开发完整桌面应用前，请先安装以下环境。
 
-- Node.js 24
-- pnpm 11.7.0
-- Rust 1.97
-- Windows 或 macOS 对应的 Tauri 2 系统依赖
+### 1. 安装系统依赖
+
+Windows：
+
+1. 安装 [Microsoft C++ 生成工具](https://visualstudio.microsoft.com/visual-cpp-build-tools/)，并在安装器中勾选“使用 C++ 的桌面开发”。
+2. Windows 10 1803 及更高版本通常已安装 WebView2；如未安装，请安装 [WebView2 Evergreen Bootstrapper](https://developer.microsoft.com/microsoft-edge/webview2/#download-section)。
+3. 在 PowerShell 中安装 Rust（选择默认的 MSVC 工具链），完成后重新打开终端：
+
+```powershell
+winget install --id Rustlang.Rustup
+rustup default stable-msvc
+```
+
+macOS：
+
+1. 安装 Xcode Command Line Tools：
+
+```bash
+xcode-select --install
+```
+
+2. 安装 Rust，完成后重新打开终端：
+
+```bash
+curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
+```
+
+更完整的平台说明请参考 [Tauri 2 环境准备文档](https://v2.tauri.app/start/prerequisites/)。本项目要求 Rust 1.97，仓库根目录的 `rust-toolchain.toml` 会让 rustup 自动使用该版本。
+
+### 2. 安装 Node.js 和 pnpm
+
+安装 [Node.js 24](https://nodejs.org/en/download/)，然后启用 Corepack。项目已在 `package.json` 中固定 pnpm 11.7.0，无需全局安装 Tauri CLI。
+
+```powershell
+corepack enable
+corepack install
+node --version
+pnpm --version
+rustc --version
+```
+
+### 3. 安装项目依赖并启动
 
 ```powershell
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-常用命令：
+`pnpm tauri dev` 会同时启动 Vite 前端开发服务器、编译 Rust 后端并打开桌面应用。首次编译 Rust 依赖可能需要较长时间。
+
+### 常用命令
 
 ```powershell
+# 仅启动浏览器中的前端页面
+pnpm dev
+
+# 类型检查、前端构建和 Rust 检查
 pnpm run quality
-pnpm tauri build
+
+# Rust 测试与 Clippy
+pnpm run test:rust
+pnpm run lint:rust
+```
+
+### 平台构建
+
+以下命令与 GitHub Release 工作流使用的目标和安装包格式一致。
+
+Windows x64 构建 NSIS 安装包：
+
+```powershell
+pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis --config tauri.release.json
+```
+
+macOS 构建同时支持 Apple 芯片与 Intel 的通用应用和 DMG。首次构建前先安装两个 Rust 目标：
+
+```bash
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+pnpm tauri build --target universal-apple-darwin --bundles app,dmg --config tauri.release.json
+```
+
+`tauri.release.json` 会启用应用内更新产物。完整复现正式发布前，必须在当前终端通过 `TAURI_SIGNING_PRIVATE_KEY` 提供私钥内容，或通过 `TAURI_SIGNING_PRIVATE_KEY_PATH` 提供本地私钥路径，并设置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。GitHub Actions 会从仓库 Secrets 注入私钥内容和密码。请勿将私钥提交到仓库。
+
+如果只想验证 Release 可执行文件能否编译，不生成安装包和更新签名，可以使用与 GitHub Quality 工作流一致的命令：
+
+```powershell
+# Windows x64
+pnpm tauri build --no-bundle --target x86_64-pc-windows-msvc --config tauri.release.json
+```
+
+```bash
+# macOS universal
+pnpm tauri build --no-bundle --target universal-apple-darwin --config tauri.release.json
 ```
 
 技术栈：Tauri 2、Rust、Svelte 5、TypeScript、Vite 和原生 CSS。
