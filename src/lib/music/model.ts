@@ -139,11 +139,7 @@ export function sourceLabel(code: string) {
   return SOURCES.find(([value]) => value === internal)?.[1] ?? code;
 }
 
-export function errorText(error: unknown) {
-  return typeof error === 'object' && error !== null && 'message' in error
-    ? String((error as { message: unknown }).message)
-    : String(error);
-}
+export { errorText } from '../common/error';
 
 export function formatDuration(value: number | null) {
   if (value === null) return '--:--';

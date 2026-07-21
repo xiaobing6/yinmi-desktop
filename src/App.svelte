@@ -3,6 +3,7 @@
   import { listen } from '@tauri-apps/api/event';
   import { exit } from '@tauri-apps/plugin-process';
   import { onMount } from 'svelte';
+  import { errorText } from './lib/common/error';
   import SearchPage from './lib/product/SearchPage.svelte';
   import WindowControls from './lib/product/WindowControls.svelte';
   import { titlebar } from './lib/product/windowChrome';
@@ -32,10 +33,6 @@
     { id: 'update', label: '应用更新', state: 'pending', detail: null },
   ];
   let startupStages = freshStages();
-  const errorText = (error: unknown) =>
-    typeof error === 'object' && error !== null && 'message' in error
-      ? String((error as { message: unknown }).message)
-      : String(error);
 
   async function initializeProduct() {
     starting = true;
@@ -164,9 +161,6 @@
 {/if}
 
 <style>
-  :global(*) {
-    box-sizing: border-box;
-  }
   main.splash {
     --brand: #168be8;
     --brand-deep: #0876d1;
@@ -183,14 +177,14 @@
     padding: clamp(26px, 4.5vw, 56px) clamp(30px, 6vw, 82px);
     color: var(--ink);
   }
+
   .splash-atmosphere {
     position: absolute;
     inset: 0;
     overflow: hidden;
-    background:
-      radial-gradient(circle at 78% 42%, #d9f1ff 0 19%, transparent 48%),
-      radial-gradient(circle at 100% 0, #cceaff 0 8%, transparent 31%);
+    background: radial-gradient(circle at 78% 42%, #d9f1ff 0 19%, transparent 48%), radial-gradient(circle at 100% 0, #cceaff 0 8%, transparent 31%);
   }
+
   .cloud {
     position: absolute;
     border-radius: 50%;
@@ -198,6 +192,7 @@
     filter: blur(2px);
     opacity: 0.68;
   }
+
   .cloud::before,
   .cloud::after {
     position: absolute;
@@ -205,24 +200,28 @@
     background: inherit;
     content: '';
   }
+
   .cloud-one {
     right: 4%;
     top: 11%;
     width: 210px;
     height: 68px;
   }
+
   .cloud-one::before {
     left: 35px;
     top: -54px;
     width: 112px;
     height: 112px;
   }
+
   .cloud-one::after {
     right: 10px;
     top: -28px;
     width: 88px;
     height: 88px;
   }
+
   .cloud-two {
     right: 30%;
     bottom: 3%;
@@ -230,18 +229,21 @@
     height: 52px;
     opacity: 0.4;
   }
+
   .cloud-two::before {
     left: 18px;
     top: -34px;
     width: 78px;
     height: 78px;
   }
+
   .cloud-two::after {
     right: 18px;
     top: -46px;
     width: 96px;
     height: 96px;
   }
+
   .orbit-line {
     position: absolute;
     right: -5%;
@@ -252,6 +254,7 @@
     border-radius: 50%;
     transform: rotate(-13deg);
   }
+
   .orbit-line-two {
     right: 3%;
     width: min(55vw, 710px);
@@ -259,6 +262,7 @@
     border-color: #ffffffb8;
     transform: rotate(8deg);
   }
+
   .sound-planet {
     position: absolute;
     right: clamp(90px, 14vw, 220px);
@@ -267,12 +271,11 @@
     aspect-ratio: 1;
     border-radius: 50%;
     background: var(--brand);
-    box-shadow:
-      0 34px 70px #168be82d,
-      inset 0 0 0 2px #ffffff42;
+    box-shadow: 0 34px 70px #168be82d, inset 0 0 0 2px #ffffff42;
     transform: translateY(-50%);
     animation: planet-float 4.8s ease-in-out infinite;
   }
+
   .sound-planet::before,
   .sound-planet::after,
   .planet-ring,
@@ -282,29 +285,35 @@
     border-radius: 50%;
     content: '';
   }
+
   .sound-planet::before {
     inset: 17%;
     border: clamp(18px, 2vw, 30px) solid #f7fbff;
   }
+
   .sound-planet::after {
     inset: 34%;
     border: clamp(14px, 1.7vw, 24px) solid var(--sky);
   }
+
   .planet-ring.ring-one {
     inset: -10% -28%;
     border: 3px solid #ffffffd9;
     transform: rotate(-16deg) scaleY(0.35);
   }
+
   .planet-ring.ring-two {
     inset: -18% -16%;
     border: 2px solid #168be84d;
     transform: rotate(14deg) scaleY(0.45);
   }
+
   .planet-core {
     inset: 46%;
     z-index: 2;
     background: #f7fbff;
   }
+
   .sound-planet b {
     z-index: 3;
     right: 1%;
@@ -314,6 +323,7 @@
     border: 7px solid #f7fbff;
     background: var(--mint);
   }
+
   .music-bubble {
     position: absolute;
     display: grid;
@@ -326,6 +336,7 @@
     font-family: 'Segoe UI Symbol', sans-serif;
     backdrop-filter: blur(10px);
   }
+
   .bubble-one {
     right: 7%;
     top: 17%;
@@ -333,6 +344,7 @@
     height: 74px;
     font-size: 1.8rem;
   }
+
   .bubble-two {
     right: 40%;
     top: 20%;
@@ -340,6 +352,7 @@
     height: 48px;
     font-size: 1.15rem;
   }
+
   .bubble-three {
     right: 8%;
     bottom: 12%;
@@ -347,6 +360,7 @@
     height: 54px;
     font-size: 1.25rem;
   }
+
   .splash-brand {
     z-index: 3;
     display: flex;
@@ -354,26 +368,31 @@
     gap: 12px;
     width: max-content;
   }
+
   .splash-window-controls {
     position: absolute;
     z-index: 10;
     top: 14px;
     right: 18px;
   }
+
   .splash-brand > div:last-child {
     display: grid;
     gap: 1px;
   }
+
   .splash-brand strong {
     font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
     font-size: 1.1rem;
     letter-spacing: 0.12em;
   }
+
   .splash-brand span {
     color: #698094;
     font: 600 0.57rem/1.2 'Cascadia Code', Consolas, monospace;
     letter-spacing: 0.1em;
   }
+
   .splash-mark {
     position: relative;
     width: 44px;
@@ -382,19 +401,23 @@
     background: var(--brand);
     box-shadow: 0 8px 24px #168be828;
   }
+
   .splash-mark i,
   .splash-mark b {
     position: absolute;
     border-radius: 50%;
   }
+
   .splash-mark i:first-child {
     inset: 8px;
     border: 3px solid #f7fbff;
   }
+
   .splash-mark i:nth-child(2) {
     inset: 15px;
     border: 3px solid var(--sky);
   }
+
   .splash-mark b {
     right: 3px;
     top: 3px;
@@ -403,12 +426,14 @@
     border: 2px solid #fff;
     background: var(--mint);
   }
+
   .splash-copy {
     z-index: 3;
     width: min(570px, 51vw);
     margin-block: auto;
     padding: 44px 0 28px;
   }
+
   .eyebrow {
     display: block;
     margin-bottom: 11px;
@@ -417,6 +442,7 @@
     font-weight: 700;
     letter-spacing: 0.09em;
   }
+
   main.splash h1 {
     margin: 0;
     font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
@@ -425,11 +451,13 @@
     letter-spacing: -0.07em;
     line-height: 1;
   }
+
   .splash-lead {
     margin: 17px 0 27px;
     color: #52677a;
     font-size: clamp(0.88rem, 1.1vw, 1.02rem);
   }
+
   .startup-card {
     width: min(590px, 100%);
     border: 1px solid #ffffffd9;
@@ -439,16 +467,19 @@
     box-shadow: 0 18px 50px #168be812;
     backdrop-filter: blur(18px);
   }
+
   .startup-card.error-card {
     border-color: #ee9c948f;
     background: #fff9f8d9;
   }
+
   .startup-status {
     display: grid;
     grid-template-columns: 17px minmax(0, 1fr);
     align-items: center;
     gap: 11px;
   }
+
   .startup-status > i {
     width: 12px;
     height: 12px;
@@ -457,18 +488,22 @@
     border-radius: 50%;
     animation: status-spin 0.85s linear infinite;
   }
+
   .error-card .startup-status > i {
     border-color: #d75b53;
     animation: none;
   }
+
   .startup-status div {
     display: grid;
     gap: 2px;
     min-width: 0;
   }
+
   .startup-status strong {
     font-size: 0.8rem;
   }
+
   .startup-status span {
     overflow: hidden;
     color: #728293;
@@ -476,6 +511,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
   .startup-stages {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -484,6 +520,7 @@
     padding: 0;
     list-style: none;
   }
+
   .startup-stages li {
     display: grid;
     grid-template-columns: 7px minmax(0, 1fr);
@@ -496,20 +533,24 @@
     color: #41586c;
     font-size: 0.62rem;
   }
+
   .startup-stages li > i {
     width: 6px;
     height: 6px;
     border: 1px solid #9aabba;
     border-radius: 50%;
   }
+
   .startup-stages li.done > i {
     border-color: var(--brand);
     background: var(--brand);
   }
+
   .startup-stages li.error > i {
     border-color: #d75b53;
     background: #d75b53;
   }
+
   .startup-stages small {
     grid-column: 2;
     overflow: hidden;
@@ -518,12 +559,14 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
   .splash-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
     margin-top: 13px;
   }
+
   .splash-actions button {
     cursor: pointer;
     border: 0;
@@ -533,16 +576,19 @@
     color: #fff;
     font: 700 0.68rem/1 'Segoe UI Variable Text', 'Microsoft YaHei UI', sans-serif;
   }
+
   .splash-actions .secondary,
   .splash-actions .quit {
     border: 1px solid #d6e3ec;
     background: #fff;
     color: #52677a;
   }
+
   .splash-actions button:focus-visible {
     outline: 3px solid #168be82e;
     outline-offset: 2px;
   }
+
   .splash-footnote {
     z-index: 3;
     margin: 0;
@@ -550,16 +596,19 @@
     font-size: 0.65rem;
     letter-spacing: 0.1em;
   }
+
   @keyframes status-spin {
     to {
       transform: rotate(1turn);
     }
   }
+
   @keyframes planet-float {
     50% {
       transform: translateY(calc(-50% - 8px));
     }
   }
+
   @media (max-width: 900px) {
     main.splash {
       padding-inline: 36px;
@@ -575,22 +624,8 @@
       opacity: 0.6;
     }
   }
-  @media (max-width: 680px) {
-    .splash-copy {
-      width: 100%;
-    }
-    .splash-atmosphere {
-      opacity: 0.26;
-    }
-    .sound-planet {
-      right: -20vw;
-      width: 75vw;
-    }
-    .startup-stages {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-  @media (max-height: 590px) and (min-width: 681px) {
+
+  @media (max-height: 590px) and (min-width: 800px) {
     main.splash {
       padding-block: 20px;
     }
@@ -607,6 +642,7 @@
       margin-top: 9px;
     }
   }
+
   @media (prefers-reduced-motion: reduce) {
     .startup-status > i,
     .sound-planet {

@@ -8,10 +8,17 @@
   text-rendering: optimizeLegibility;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 800px;
   min-height: 100vh;
+  overflow: hidden;
   background: #f4f9fd;
 }
 
