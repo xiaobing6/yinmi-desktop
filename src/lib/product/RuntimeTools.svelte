@@ -434,7 +434,6 @@
     white-space: nowrap;
     min-height: 32px;
     border-radius: 8px;
-    padding-inline: 12px;
     font-size: 0.72rem;
   }
 
@@ -447,7 +446,6 @@
   .logs-button:hover {
     border-color: #b7d7ec;
     background: #edf7fd;
-    color: #0876d1;
   }
 
   .update-action {
@@ -481,9 +479,7 @@
   }
 
   .log-drawer {
-    border-left: 1px solid #c9d7e3;
     padding: 0;
-    border-left-color: #dfe4ed;
     width: min(730px, calc(100vw - 32px));
     height: min(740px, calc(100vh - 32px));
     margin: auto 16px auto auto;
@@ -510,8 +506,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid #d5e0e9;
-    border-bottom-color: #dce5ee;
+    border-bottom: 1px solid #dce5ee;
     background: #fff;
     padding: 20px 24px 18px;
   }
@@ -567,8 +562,7 @@
     grid-template-columns: 120px 1fr auto;
     align-items: end;
     gap: 10px;
-    border-bottom: 1px solid #d7e1e9;
-    border-bottom-color: #dce5ee;
+    border-bottom: 1px solid #dce5ee;
     background: #f7fbfe;
     padding: 12px 20px 13px;
   }
@@ -577,9 +571,8 @@
   .log-controls input {
     width: 100%;
     height: 36px;
-    border: 1px solid #b9cbd9;
+    border: 1px solid #cedae5;
     padding: 0 9px;
-    border-color: #cedae5;
     border-radius: 8px;
     background: #fff;
     color: #1d1d1f;
@@ -696,8 +689,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    border-top: 1px solid #d5e0e9;
-    border-top-color: #dce5ee;
+    border-top: 1px solid #dce5ee;
     background: #fff;
     padding: 11px 20px;
   }

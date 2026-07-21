@@ -223,26 +223,14 @@ button:disabled {
     white-space: nowrap;
   }
 
-tr.selected td {
-    background: #e8f5ec;
-  }
-
 .status-line {
     display: flex;
     align-items: center;
     gap: 7px;
   }
 
-.status.current {
-    color: #15834a;
-  }
-
 .status.waiting {
     color: #687d90;
-  }
-
-.status.success {
-    color: #13785c;
   }
 
 .status.failed {
@@ -339,24 +327,8 @@ tr.selected td {
       }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .pulse {
-        animation: none;
-      }
-}
-
 tbody tr {
     transition: background 140ms ease;
-  }
-
-.name {
-    color: #202a3b;
-    font-weight: 700;
-  }
-
-.source-name {
-    font-size: 0.72rem;
-    color: var(--signal-dark);
   }
 
 .empty-record::before,
@@ -370,45 +342,16 @@ tbody tr {
 
 .empty-record::before {
     inset: 16px;
-    border: 1px solid #d4d0ef;
   }
 
 .empty-record::after {
     inset: 34px;
-    border: 1px solid #d4d0ef;
   }
 
 .empty-record i:nth-child(2) {
     inset: 65px;
     background: #fff;
   }
-
-@media (max-width: 1120px) and (min-width: 800px) {
-  table {
-        min-width: 740px;
-      }
-
-  th:nth-child(5),
-  td:nth-child(5),
-  th:nth-child(6),
-  td:nth-child(6) {
-        display: none;
-      }
-}
-
-@media (max-height: 620px) and (min-width: 800px) {
-  .results {
-        border-radius: 15px;
-        padding-block: 14px;
-      }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  tbody tr {
-        animation: none;
-        transition: none;
-      }
-}
 
 .heading > div > span {
     color: var(--signal-dark);
@@ -458,8 +401,7 @@ button {
   }
 
 .heading h2 {
-    margin: 5px 0 0;
-    margin-top: 7px;
+    margin: 7px 0 0;
     color: var(--ink);
     font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
     font-size: clamp(1.5rem, 2vw, 1.8rem);
@@ -545,8 +487,7 @@ button {
   }
 
 .message.error {
-    border: 1px solid #f0cbc6;
-    border-color: #efcbc6;
+    border: 1px solid #efcbc6;
     background: #fff8f7;
   }
 
@@ -584,12 +525,11 @@ button {
     align-items: center;
     gap: 8px;
     min-height: 32px;
-    border: 1px solid #dfc47e;
+    border: 1px solid #ead7a5;
     border-bottom: 0;
     padding: 5px 12px;
     color: #7d6428;
     font-size: 0.72rem;
-    border-color: #ead7a5;
     background: #fffaf0;
   }
 
@@ -599,7 +539,6 @@ button {
     overflow: auto;
     border: 1px solid var(--line);
     scrollbar-width: thin;
-    border-color: var(--line);
     border-radius: 0 0 12px 12px;
     background: #fff;
     scrollbar-color: #bdcad5 transparent;
@@ -660,11 +599,10 @@ td:nth-child(6) {
 
 td {
     overflow: hidden;
-    border-top: 1px solid #e1e5df;
+    border-top: 1px solid #e7edf2;
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: none;
-    border-top-color: #e7edf2;
     padding: 9px 10px;
     color: #637383;
   }
@@ -767,10 +705,7 @@ tr.selected:hover td {
     align-content: center;
     flex: 1 1 auto;
     min-height: 220px;
-    background-size: 32px 32px;
     gap: 9px;
-    background-color: #f8f9fc;
-    background-image: none;
     border: 1px solid #e0e9f0;
     border-radius: 12px;
     background: #f8fbfd;
@@ -795,16 +730,15 @@ tr.selected:hover td {
     width: 142px;
     height: 142px;
     margin-bottom: 4px;
-    border: 1px solid #dfe2ee;
+    border: 1px solid #d6e8f5;
     border-radius: 50%;
-    border-color: #d6e8f5;
     background: #edf8ff;
     box-shadow: 0 20px 46px #168be812;
   }
 
 .empty-record::before,
 .empty-record::after {
-    border-color: #c5e1f3;
+    border: 1px solid #c5e1f3;
   }
 
 .empty-record i:first-child {
@@ -860,6 +794,10 @@ tr.selected:hover td {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .pulse {
+        animation: none;
+      }
+
   tbody tr {
         transition: none;
       }

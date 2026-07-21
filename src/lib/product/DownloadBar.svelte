@@ -126,10 +126,6 @@ button:disabled {
     opacity: 0.45;
   }
 
-.download:hover:not(:disabled) {
-    background: #7ae6a2;
-  }
-
 .download-copy {
     display: grid;
     flex: 1 1 auto;
@@ -150,45 +146,6 @@ button:disabled {
     align-items: center;
     gap: 7px;
   }
-
-.open {
-    background: #28445e;
-    color: #e6f0f7;
-  }
-
-.retry-all {
-    background: #285b78;
-    color: #e8f5fc;
-  }
-
-.cancel {
-    background: #36526c;
-    color: #f0f5f8;
-  }
-
-@media (max-width: 1050px) and (min-width: 800px) {
-  footer {
-        gap: 10px;
-      }
-
-  .selected-summary {
-        display: none;
-      }
-}
-
-@media (max-height: 560px) and (min-width: 800px) {
-  footer {
-        min-height: 82px;
-        max-height: 96px;
-        padding-block: 6px;
-      }
-}
-
-@media (max-height: 620px) and (min-width: 800px) {
-  footer {
-        min-height: 70px;
-      }
-}
 
 button:focus-visible {
     border-color: var(--signal);
@@ -281,7 +238,6 @@ footer span {
     align-items: flex-end;
     gap: 3px 7px;
     height: 32px;
-    min-height: 32px;
     margin-top: 0;
     padding-bottom: 5px;
   }
@@ -345,7 +301,7 @@ footer span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #c44f48 !important;
+    color: #c44f48;
     font-size: 0.72rem;
   }
 
@@ -390,9 +346,4 @@ footer span {
       }
 }
 
-@media (max-height: 620px) and (min-width: 800px) {
-  footer {
-        min-height: 58px;
-      }
-}
 </style>

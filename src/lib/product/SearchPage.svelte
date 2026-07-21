@@ -498,7 +498,6 @@
     >
       <b></b>
       <span>{downloading ? '正在下载' : searching ? '正在搜索' : '准备就绪'}</span>
-      <i></i>
     </div>
     <RuntimeTools />
     <span class="version">v{appVersion || '0.1.3'}</span>
@@ -689,23 +688,6 @@
     border-radius: 50%;
   }
 
-.signal-rail.active i {
-    background: linear-gradient(90deg, var(--signal) 0 34%, #424b46 34% 100%);
-    background-size: 180% 100%;
-    animation: signal-scan 1.4s linear infinite;
-  }
-
-.signal-rail.downloading i {
-    background: var(--signal);
-    animation: none;
-  }
-
-form .keyword,
-form label:nth-of-type(2),
-form label:nth-of-type(3) {
-    grid-column: 1 / -1;
-  }
-
 label {
     display: grid;
     gap: 6px;
@@ -714,10 +696,6 @@ label {
 button:disabled {
     cursor: not-allowed;
     opacity: 0.45;
-  }
-
-.primary:hover:not(:disabled) {
-    background: #7ae6a2;
   }
 
 .quality-setting,
@@ -730,76 +708,13 @@ button:disabled {
     color: #b23e37;
   }
 
-@keyframes signal-scan {
-    to {
-      background-position: -180% 0;
-    }
-  }
-
-@media (max-width: 1050px) and (min-width: 800px) {
-  .workspace {
-        grid-template-columns: 280px minmax(0, 1fr);
-      }
-
-  .search-panel {
-        padding-inline: 16px;
-      }
-
-  .panel-heading p {
-        display: none;
-      }
-}
-
 @media (max-height: 560px) and (min-width: 800px) {
-  .shell {
-        grid-template-rows: auto auto minmax(0, 1fr) auto;
-      }
-
-  .topbar {
-        min-height: 54px;
-        padding-block: 6px;
-      }
-
   .topbar p {
         display: none;
       }
 
-  .mark {
-        width: 36px;
-        height: 36px;
-        border-radius: 10px;
-      }
-
-  .mark i:first-child {
-        inset: 7px;
-      }
-
-  .mark i:nth-child(2) {
-        inset: 13px;
-      }
-
-  .search-panel {
-        padding-block: 12px;
-      }
-
   .panel-heading {
         display: none;
-      }
-
-  .section-label.download-label {
-        margin-top: 12px;
-      }
-
-  form,
-  label {
-        gap: 3px;
-      }
-
-  input:not([type='checkbox']),
-  select,
-  .primary,
-  .toggle-setting {
-        height: 32px;
       }
 
   .hint,
@@ -810,12 +725,6 @@ button:disabled {
   .download-settings {
         margin-top: 6px;
         padding-top: 6px;
-      }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .signal-rail.active i {
-        animation: none;
       }
 }
 
@@ -832,56 +741,16 @@ button:disabled {
     }
   }
 
-@media (max-width: 1120px) and (min-width: 800px) {
-  .workspace {
-        grid-template-columns: 280px minmax(0, 1fr);
-        padding-inline: 12px;
-      }
-
-  .search-panel {
-        padding-inline: 17px;
-      }
-}
-
-@media (max-height: 620px) and (min-width: 800px) {
-  .topbar {
-        min-height: 58px;
-        padding-block: 7px;
-      }
-
-  .workspace {
-        padding-block: 10px;
-      }
-
-  .search-panel {
-        border-radius: 15px;
-        padding-block: 14px;
-      }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .signal-rail.active b,
-  .primary {
-        animation: none;
-        transition: none;
-      }
-}
-
 .shell {
     display: grid;
     height: 100vh;
     --ink: #1d1d1f;
-    --ink-soft: #334252;
     --paper: #f6fafe;
-    --panel: #f2f8fd;
     --line: #dce5ee;
-    --muted: #6e7886;
     --signal: #168be8;
     --signal-dark: #0876d1;
     --action: #0876d1;
     --action-hover: #066fc4;
-    --apricot: #64d2af;
-    --alert: #d75b53;
     grid-template-rows: auto minmax(0, 1fr) auto;
     background: var(--paper);
     color: var(--ink);
@@ -916,8 +785,7 @@ button:disabled {
   }
 
 .topbar p {
-    margin: 2px 0 0;
-    margin-top: 1px;
+    margin: 1px 0 0;
     color: #718295;
     font-size: 0.7rem;
   }
@@ -933,9 +801,7 @@ button:disabled {
   }
 
 .mark i {
-    border: 1px solid #a9b4ae;
-    border-color: #aeb7c8;
-    border-width: 3px;
+    border: 3px solid #aeb7c8;
   }
 
 .mark i:first-child {
@@ -959,8 +825,6 @@ button:disabled {
   }
 
 .signal-rail {
-    grid-template-columns: none;
-    min-height: 28px;
     display: flex;
     align-items: center;
     gap: 7px;
@@ -982,12 +846,6 @@ button:disabled {
     height: 6px;
     background: #64d2af;
     box-shadow: 0 0 0 4px #64d2af1d;
-  }
-
-.signal-rail i {
-    height: 1px;
-    background: #424b46;
-    display: none;
   }
 
 .signal-rail.active {
@@ -1134,7 +992,6 @@ select {
     width: 100%;
     outline: none;
     font: inherit;
-    font-family: inherit;
     height: 40px;
     border: 1px solid #cedae5;
     border-radius: 8px;
@@ -1186,9 +1043,8 @@ button {
   }
 
 .hint {
-    margin: 7px 0 0;
+    margin: 8px 0 0;
     line-height: 1.5;
-    margin-top: 8px;
     color: #83919f;
     font-size: 0.65rem;
   }
@@ -1203,12 +1059,11 @@ button {
 .toggle-setting {
     display: flex;
     align-items: center;
-    border: 1px solid #b6beb6;
+    border: 1px solid #d4dfe8;
     cursor: pointer;
     gap: 9px;
     padding: 0 10px;
     height: 42px;
-    border-color: #d4dfe8;
     border-radius: 8px;
     background: #fff;
   }
@@ -1237,10 +1092,9 @@ button {
   }
 
 .directory-control button {
-    border: 1px solid #aeb7ae;
+    border: 1px solid #cedae5;
     padding: 0 12px;
     white-space: nowrap;
-    border-color: #cedae5;
     border-radius: 8px;
     background: #fff;
     color: var(--signal-dark);
@@ -1248,9 +1102,8 @@ button {
   }
 
 .directory-message {
-    margin: 5px 0 0;
+    margin: 7px 0 0;
     line-height: 1.45;
-    margin-top: 7px;
     color: #83919f;
     font-size: 0.66rem;
   }
