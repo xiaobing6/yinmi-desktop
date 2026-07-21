@@ -162,18 +162,18 @@
 
 <style>
   main.splash {
-    --brand: #168be8;
-    --brand-deep: #0876d1;
-    --sky: #a8deff;
-    --mint: #64d2af;
-    --ink: #1d1d1f;
-    --muted: #6e7886;
+    --brand: var(--yinmi-brand);
+    --brand-deep: var(--yinmi-primary-hover);
+    --sky: #9fcbff;
+    --mint: var(--yinmi-success);
+    --ink: var(--yinmi-text);
+    --muted: var(--yinmi-text-secondary);
     position: relative;
     display: flex;
     flex-direction: column;
     min-height: 100vh;
     overflow: hidden;
-    background: #f3faff;
+    background: var(--yinmi-background);
     padding: clamp(26px, 4.5vw, 56px) clamp(30px, 6vw, 82px);
     color: var(--ink);
   }
@@ -182,7 +182,9 @@
     position: absolute;
     inset: 0;
     overflow: hidden;
-    background: radial-gradient(circle at 78% 42%, #d9f1ff 0 19%, transparent 48%), radial-gradient(circle at 100% 0, #cceaff 0 8%, transparent 31%);
+    background:
+      radial-gradient(circle at 78% 42%, var(--yinmi-primary-soft) 0 18%, transparent 46%),
+      radial-gradient(circle at 100% 0, #f7f7fa 0 10%, transparent 34%);
   }
 
   .cloud {
@@ -190,7 +192,7 @@
     border-radius: 50%;
     background: #fff;
     filter: blur(2px);
-    opacity: 0.68;
+    opacity: 0.42;
   }
 
   .cloud::before,
@@ -250,7 +252,7 @@
     top: 52%;
     width: min(68vw, 870px);
     height: min(25vw, 310px);
-    border: 2px solid #168be82a;
+    border: 1px solid rgba(0, 122, 255, 0.16);
     border-radius: 50%;
     transform: rotate(-13deg);
   }
@@ -271,9 +273,9 @@
     aspect-ratio: 1;
     border-radius: 50%;
     background: var(--brand);
-    box-shadow: 0 34px 70px #168be82d, inset 0 0 0 2px #ffffff42;
+    box-shadow: var(--yinmi-shadow-overlay), inset 0 0 0 1px rgba(255, 255, 255, 0.28);
     transform: translateY(-50%);
-    animation: planet-float 4.8s ease-in-out infinite;
+    animation: planet-enter 550ms var(--yinmi-ease) both;
   }
 
   .sound-planet::before,
@@ -328,11 +330,11 @@
     position: absolute;
     display: grid;
     place-items: center;
-    border: 1px solid #ffffffd9;
+    border: 1px solid var(--yinmi-border);
     border-radius: 50%;
-    background: #ffffff80;
+    background: rgba(255, 255, 255, 0.72);
     color: var(--brand);
-    box-shadow: 0 14px 36px #168be814;
+    box-shadow: var(--yinmi-shadow-raised);
     font-family: 'Segoe UI Symbol', sans-serif;
     backdrop-filter: blur(10px);
   }
@@ -388,7 +390,7 @@
   }
 
   .splash-brand span {
-    color: #698094;
+    color: var(--yinmi-text-secondary);
     font: 600 0.57rem/1.2 'Cascadia Code', Consolas, monospace;
     letter-spacing: 0.1em;
   }
@@ -399,7 +401,7 @@
     height: 44px;
     border-radius: 11px;
     background: var(--brand);
-    box-shadow: 0 8px 24px #168be828;
+    box-shadow: var(--yinmi-shadow-raised);
   }
 
   .splash-mark i,
@@ -454,23 +456,23 @@
 
   .splash-lead {
     margin: 17px 0 27px;
-    color: #52677a;
+    color: var(--yinmi-text-secondary);
     font-size: clamp(0.88rem, 1.1vw, 1.02rem);
   }
 
   .startup-card {
     width: min(590px, 100%);
-    border: 1px solid #ffffffd9;
-    border-radius: 18px;
-    background: #ffffffb8;
+    border: 1px solid var(--yinmi-border);
+    border-radius: var(--yinmi-radius-lg);
+    background: var(--yinmi-surface-raised);
     padding: 16px 17px;
-    box-shadow: 0 18px 50px #168be812;
-    backdrop-filter: blur(18px);
+    box-shadow: var(--yinmi-shadow-raised);
+    backdrop-filter: blur(20px);
   }
 
   .startup-card.error-card {
-    border-color: #ee9c948f;
-    background: #fff9f8d9;
+    border-color: color-mix(in srgb, var(--yinmi-error) 28%, white);
+    background: color-mix(in srgb, var(--yinmi-error-surface) 88%, transparent);
   }
 
   .startup-status {
@@ -490,7 +492,7 @@
   }
 
   .error-card .startup-status > i {
-    border-color: #d75b53;
+    border-color: var(--yinmi-error);
     animation: none;
   }
 
@@ -506,7 +508,7 @@
 
   .startup-status span {
     overflow: hidden;
-    color: #728293;
+    color: var(--yinmi-text-secondary);
     font-size: 0.68rem;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -526,18 +528,18 @@
     grid-template-columns: 7px minmax(0, 1fr);
     gap: 3px 7px;
     align-items: center;
-    border: 1px solid #dbeaf5;
-    border-radius: 9px;
-    background: #f8fcffcc;
+    border: 1px solid var(--yinmi-border);
+    border-radius: var(--yinmi-radius-sm);
+    background: var(--yinmi-surface-muted);
     padding: 7px 8px;
-    color: #41586c;
+    color: var(--yinmi-text);
     font-size: 0.62rem;
   }
 
   .startup-stages li > i {
     width: 6px;
     height: 6px;
-    border: 1px solid #9aabba;
+    border: 1px solid var(--yinmi-text-muted);
     border-radius: 50%;
   }
 
@@ -547,14 +549,14 @@
   }
 
   .startup-stages li.error > i {
-    border-color: #d75b53;
-    background: #d75b53;
+    border-color: var(--yinmi-error);
+    background: var(--yinmi-error);
   }
 
   .startup-stages small {
     grid-column: 2;
     overflow: hidden;
-    color: #8a99a7;
+    color: var(--yinmi-text-muted);
     font-size: 0.55rem;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -570,7 +572,7 @@
   .splash-actions button {
     cursor: pointer;
     border: 0;
-    border-radius: 9px;
+    border-radius: var(--yinmi-radius-pill);
     background: var(--brand-deep);
     padding: 9px 14px;
     color: #fff;
@@ -579,20 +581,15 @@
 
   .splash-actions .secondary,
   .splash-actions .quit {
-    border: 1px solid #d6e3ec;
-    background: #fff;
-    color: #52677a;
-  }
-
-  .splash-actions button:focus-visible {
-    outline: 3px solid #168be82e;
-    outline-offset: 2px;
+    border: 1px solid var(--yinmi-border);
+    background: var(--yinmi-surface);
+    color: var(--yinmi-text-secondary);
   }
 
   .splash-footnote {
     z-index: 3;
     margin: 0;
-    color: #8091a0;
+    color: var(--yinmi-text-muted);
     font-size: 0.65rem;
     letter-spacing: 0.1em;
   }
@@ -603,9 +600,10 @@
     }
   }
 
-  @keyframes planet-float {
-    50% {
-      transform: translateY(calc(-50% - 8px));
+  @keyframes planet-enter {
+    from {
+      opacity: 0;
+      transform: translateY(-47%) scale(0.97);
     }
   }
 

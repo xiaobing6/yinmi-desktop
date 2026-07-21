@@ -1,9 +1,46 @@
 :root {
+  /* Pinguo-inspired semantic tokens, adapted for Yinmi's desktop identity. */
+  --yinmi-brand: #168be8;
+  --yinmi-primary: #007aff;
+  --yinmi-primary-hover: #0064d6;
+  --yinmi-primary-pressed: #004fad;
+  --yinmi-primary-soft: #e8f2ff;
+  --yinmi-primary-soft-hover: #cfe5ff;
+  --yinmi-background: #f2f2f7;
+  --yinmi-surface: #ffffff;
+  --yinmi-surface-muted: #f7f7fa;
+  --yinmi-surface-raised: rgba(255, 255, 255, 0.94);
+  --yinmi-border: #e5e5ea;
+  --yinmi-border-strong: #d1d1d6;
+  --yinmi-text: #1d1d1f;
+  --yinmi-text-secondary: #6e6e73;
+  --yinmi-text-muted: #8e8e93;
+  --yinmi-success: #34c759;
+  --yinmi-success-foreground: #1b7f37;
+  --yinmi-success-surface: #e9f9ee;
+  --yinmi-warning: #9a6700;
+  --yinmi-warning-surface: #fff8e6;
+  --yinmi-error: #ff3b30;
+  --yinmi-error-foreground: #d70015;
+  --yinmi-error-surface: #ffecea;
+  --yinmi-focus-ring: rgba(0, 122, 255, 0.24);
+  --yinmi-radius-sm: 8px;
+  --yinmi-radius-md: 12px;
+  --yinmi-radius-lg: 18px;
+  --yinmi-radius-pill: 999px;
+  --yinmi-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --yinmi-shadow-raised:
+    0 4px 8px -2px rgba(0, 0, 0, 0.06),
+    0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --yinmi-shadow-overlay:
+    0 16px 40px -10px rgba(0, 0, 0, 0.1),
+    0 8px 16px -8px rgba(0, 0, 0, 0.06);
+  --yinmi-ease: cubic-bezier(0.32, 0.72, 0, 1);
   font-family:
     'Segoe UI Variable Text', 'Microsoft YaHei UI', 'PingFang SC',
     'Noto Sans CJK SC', system-ui, sans-serif;
-  color: #1d1d1f;
-  background: #f4f9fd;
+  color: var(--yinmi-text);
+  background: var(--yinmi-background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -19,7 +56,7 @@ body {
   min-width: 800px;
   min-height: 100vh;
   overflow: hidden;
-  background: #f4f9fd;
+  background: var(--yinmi-background);
 }
 
 button,
@@ -27,4 +64,54 @@ input,
 select,
 textarea {
   font-family: inherit;
+  transition:
+    border-color 150ms var(--yinmi-ease),
+    background-color 150ms var(--yinmi-ease),
+    color 150ms var(--yinmi-ease),
+    box-shadow 150ms var(--yinmi-ease),
+    transform 150ms var(--yinmi-ease);
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+:root :is(input:not([type='checkbox']), select, textarea):focus {
+  border-color: var(--yinmi-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--yinmi-focus-ring);
+}
+
+:where(input[type='checkbox']):focus-visible,
+:where(button):focus-visible,
+:where(summary):focus-visible {
+  outline: 2px solid var(--yinmi-primary);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  :root :is(
+    input[type='checkbox'],
+    input:not([type='checkbox']),
+    select,
+    textarea,
+    button,
+    summary
+  ):focus {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  input,
+  select,
+  textarea {
+    transition: none;
+  }
 }

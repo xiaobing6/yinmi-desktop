@@ -6,6 +6,7 @@
     type DownloadProgress,
     type SearchResult,
   } from '../music/model';
+  import FolderOpenIcon from './icons/FolderOpenIcon.svelte';
   import type { QueueStats, RetryTarget } from './downloadView';
 
   export let selectedCount: number;
@@ -107,7 +108,8 @@
       {#if downloadResult}<button
           class="open"
           type="button"
-          onclick={onOpenDirectory}>打开目录</button
+          onclick={onOpenDirectory}
+          ><FolderOpenIcon size={15} /><span>打开目录</span></button
         >{/if}
       <button
         class="download"
@@ -147,18 +149,12 @@ button:disabled {
     gap: 7px;
   }
 
-button:focus-visible {
-    border-color: var(--signal);
-    outline: none;
-    box-shadow: 0 0 0 3px #168be821;
-  }
-
 button {
     cursor: pointer;
     border: 0;
     font: inherit;
     font-weight: 700;
-    border-radius: 8px;
+    border-radius: var(--yinmi-radius-sm);
   }
 
 footer {
@@ -169,15 +165,15 @@ footer {
     min-height: 95px;
     max-height: 108px;
     border-top: 1px solid var(--line);
-    background: #ffffffef;
+    background: var(--yinmi-surface-raised);
     padding: 8px clamp(20px, 2.5vw, 34px);
     color: var(--ink);
-    box-shadow: 0 -8px 24px #168be808;
-    backdrop-filter: blur(18px);
+    box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.02);
+    backdrop-filter: blur(20px);
   }
 
 footer span {
-    color: #6f7f8e;
+    color: var(--yinmi-text-secondary);
     font-size: 0.72rem;
   }
 
@@ -220,7 +216,7 @@ footer span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #263746;
+    color: var(--yinmi-text);
     font-size: 0.75rem;
   }
 
@@ -229,7 +225,7 @@ footer span {
     height: 5px;
     margin-top: 4px;
     border: 0;
-    accent-color: var(--signal);
+    accent-color: var(--yinmi-primary);
   }
 
 .queue-stats {
@@ -248,7 +244,7 @@ footer span {
     align-items: flex-end;
     width: auto;
     gap: 2px;
-    color: #80909f;
+    color: var(--yinmi-text-muted);
     font-size: 0.76rem;
     font-weight: 600;
     line-height: 1;
@@ -268,31 +264,31 @@ footer span {
   }
 
 .queue-stats .waiting {
-    color: #718191;
+    color: var(--yinmi-text-secondary);
   }
 
 .queue-stats .current {
-    color: var(--signal-dark);
+    color: var(--yinmi-primary-hover);
   }
 
 .queue-stats .succeeded {
-    color: #258367;
+    color: var(--yinmi-success-foreground);
   }
 
 .queue-stats .skipped {
-    color: #9a6a18;
+    color: var(--yinmi-warning);
   }
 
 .queue-stats .failed {
-    color: #c44f48;
+    color: var(--yinmi-error-foreground);
   }
 
 .queue-stats .cancelled {
-    color: #7c8793;
+    color: var(--yinmi-text-muted);
   }
 
 .queue-stats .total {
-    color: #344f65;
+    color: var(--yinmi-text);
   }
 
 .footer-error {
@@ -301,7 +297,7 @@ footer span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #c44f48;
+    color: var(--yinmi-error-foreground);
     font-size: 0.72rem;
   }
 
@@ -310,23 +306,41 @@ footer span {
 .cancel,
 .retry-all {
     white-space: nowrap;
-    border-radius: 8px;
+    border-radius: var(--yinmi-radius-pill);
     padding: 10px 16px;
   }
 
 .open,
 .retry-all,
 .cancel {
-    border: 1px solid #cfe0ed;
-    background: #f2f8fc;
-    color: var(--signal-dark);
+    border: 1px solid var(--yinmi-border);
+    background: var(--yinmi-surface-muted);
+    color: var(--yinmi-primary-hover);
+  }
+
+.open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+.open > span {
+    color: inherit;
+    font-size: inherit;
+  }
+
+.open:hover:not(:disabled),
+.retry-all:hover:not(:disabled),
+.cancel:hover:not(:disabled) {
+    border-color: var(--yinmi-primary-soft-hover);
+    background: var(--yinmi-primary-soft);
   }
 
 .download {
     min-width: 144px;
     background: var(--action);
     color: #fff;
-    box-shadow: 0 8px 22px #168be825;
+    box-shadow: var(--yinmi-shadow-raised);
   }
 
 .download:hover:not(:disabled) {
@@ -334,9 +348,14 @@ footer span {
   }
 
 .cancel.all {
-    border-color: #ebc3bf;
-    background: #fff5f4;
-    color: #bc4d46;
+    border-color: color-mix(in srgb, var(--yinmi-error) 24%, white);
+    background: var(--yinmi-error-surface);
+    color: var(--yinmi-error-foreground);
+  }
+
+.cancel.all:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--yinmi-error) 36%, white);
+    background: color-mix(in srgb, var(--yinmi-error-surface) 82%, white);
   }
 
 @media (max-height: 850px) and (min-width: 800px) {

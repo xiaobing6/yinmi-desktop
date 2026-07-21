@@ -22,6 +22,7 @@
     type SourceCode,
   } from '../music/model';
   import DownloadBar from './DownloadBar.svelte';
+  import FolderOpenIcon from './icons/FolderOpenIcon.svelte';
   import RuntimeTools from './RuntimeTools.svelte';
   import SearchResults from './SearchResults.svelte';
   import WindowControls from './WindowControls.svelte';
@@ -627,7 +628,8 @@
           <button
             type="button"
             disabled={downloading || directoryLoading}
-            onclick={() => void chooseDirectory()}>选择</button
+            onclick={() => void chooseDirectory()}
+            ><FolderOpenIcon size={15} /><span>选择</span></button
           >
         </span>
       </div>
@@ -750,13 +752,13 @@ button:disabled {
 .shell {
     display: grid;
     height: 100vh;
-    --ink: #1d1d1f;
-    --paper: #f6fafe;
-    --line: #dce5ee;
-    --signal: #168be8;
-    --signal-dark: #0876d1;
-    --action: #0876d1;
-    --action-hover: #066fc4;
+    --ink: var(--yinmi-text);
+    --paper: var(--yinmi-background);
+    --line: var(--yinmi-border);
+    --signal: var(--yinmi-brand);
+    --signal-dark: var(--yinmi-primary-hover);
+    --action: var(--yinmi-primary-hover);
+    --action-hover: var(--yinmi-primary-pressed);
     grid-template-rows: auto minmax(0, 1fr) auto;
     background: var(--paper);
     color: var(--ink);
@@ -764,16 +766,18 @@ button:disabled {
   }
 
 .topbar {
+    --topbar-inline-padding: clamp(20px, 2.5vw, 34px);
+    --window-controls-edge-offset: calc(8px - var(--topbar-inline-padding));
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 72px;
+    min-height: 68px;
     border-bottom: 1px solid var(--line);
-    background: #ffffffed;
-    padding: 10px clamp(20px, 2.5vw, 34px);
+    background: var(--yinmi-surface-raised);
+    padding: 10px var(--topbar-inline-padding);
     color: var(--ink);
-    box-shadow: 0 1px 12px #168be810;
-    backdrop-filter: blur(18px);
+    box-shadow: var(--yinmi-shadow-subtle);
+    backdrop-filter: blur(20px);
     user-select: none;
   }
 
@@ -792,7 +796,7 @@ button:disabled {
 
 .topbar p {
     margin: 1px 0 0;
-    color: #718295;
+    color: var(--yinmi-text-secondary);
     font-size: 0.7rem;
   }
 
@@ -803,7 +807,7 @@ button:disabled {
     border: 0;
     border-radius: 11px;
     background: var(--signal);
-    box-shadow: 0 8px 24px #168be824;
+    box-shadow: var(--yinmi-shadow-raised);
   }
 
 .mark i {
@@ -837,11 +841,11 @@ button:disabled {
     width: max-content;
     height: 32px;
     margin-left: 14px;
-    border: 1px solid #d6e9f7;
+    border: 1px solid var(--yinmi-border);
     border-radius: 999px;
-    background: #f2f9fe;
+    background: var(--yinmi-surface-muted);
     padding: 0 11px;
-    color: #5f7385;
+    color: var(--yinmi-text-secondary);
     font: 650 0.68rem/1 'Microsoft YaHei UI', sans-serif;
     letter-spacing: 0.03em;
   }
@@ -850,8 +854,8 @@ button:disabled {
     border-radius: 50%;
     width: 6px;
     height: 6px;
-    background: #64d2af;
-    box-shadow: 0 0 0 4px #64d2af1d;
+    background: var(--yinmi-success);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--yinmi-success) 12%, transparent);
   }
 
 .signal-rail.active {
@@ -861,7 +865,7 @@ button:disabled {
 .signal-rail.active b {
     animation: status-breathe 1.25s ease-in-out infinite;
     background: var(--signal);
-    box-shadow: 0 0 0 4px #168be819;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--yinmi-primary) 12%, transparent);
   }
 
 .version {
@@ -871,7 +875,7 @@ button:disabled {
     height: 32px;
     border-left: 1px solid var(--line);
     padding-left: 12px;
-    color: #8a98a6;
+    color: var(--yinmi-text-muted);
     font: 600 0.66rem/1 'Cascadia Code', Consolas, monospace;
   }
 
@@ -880,21 +884,20 @@ button:disabled {
     min-height: 0;
     overflow: hidden;
     grid-template-columns: minmax(300px, 326px) minmax(0, 1fr);
-    gap: 0;
-    background: #fff;
-    padding: 0;
+    gap: 14px;
+    background: var(--paper);
+    padding: 14px;
   }
 
 .search-panel {
     min-height: 0;
     overflow: auto;
     scrollbar-width: thin;
-    border: 0;
-    border-right: 1px solid var(--line);
-    border-radius: 0;
-    background: #f2f7fb;
+    border: 1px solid var(--line);
+    border-radius: var(--yinmi-radius-lg);
+    background: var(--yinmi-surface-muted);
     padding: 23px 21px 28px;
-    box-shadow: none;
+    box-shadow: var(--yinmi-shadow-subtle);
     scrollbar-color: #bdcad5 transparent;
   }
 
@@ -921,7 +924,7 @@ button:disabled {
 .panel-heading p {
     margin: 0;
     line-height: 1.65;
-    color: #718295;
+    color: var(--yinmi-text-secondary);
     font-size: 0.73rem;
   }
 
@@ -930,12 +933,12 @@ button:disabled {
     align-items: baseline;
     justify-content: space-between;
     margin-bottom: 12px;
-    border-bottom: 1px solid #dce5ee;
+    border-bottom: 1px solid var(--yinmi-border);
     padding-bottom: 8px;
   }
 
 .section-label b {
-    color: #6d7b89;
+    color: var(--yinmi-text-secondary);
     font-size: 0.68rem;
     font-weight: 600;
   }
@@ -948,7 +951,7 @@ button:disabled {
 
 .reset-directory {
     border: 0;
-    border-left: 1px solid #cfdae4;
+    border-left: 1px solid var(--yinmi-border-strong);
     border-radius: 0;
     background: transparent;
     padding: 0 0 0 8px;
@@ -988,7 +991,7 @@ form label > span,
 .quality-setting > span,
 .directory-setting > label {
     letter-spacing: 0.02em;
-    color: #566879;
+    color: var(--yinmi-text-secondary);
     font-size: 0.69rem;
     font-weight: 650;
   }
@@ -999,31 +1002,32 @@ select {
     outline: none;
     font: inherit;
     height: 40px;
-    border: 1px solid #cedae5;
-    border-radius: 8px;
-    background: #fff;
+    border: 1px solid var(--yinmi-border-strong);
+    border-radius: var(--yinmi-radius-sm);
+    background: var(--yinmi-surface);
     padding: 0 11px;
     color: var(--ink);
   }
 
+select {
+    appearance: none;
+    background-image: url('./icons/chevron-down.svg');
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 14px 14px;
+    padding-right: 36px;
+  }
+
 .keyword input {
     height: 46px;
-    border-color: #b9d9ef;
-    background: #fff;
+    border-color: var(--yinmi-border-strong);
+    background: var(--yinmi-surface);
     font-size: 0.88rem;
-    box-shadow: 0 4px 16px #168be809;
+    box-shadow: var(--yinmi-shadow-subtle);
   }
 
 input::placeholder {
-    color: #9aa7b3;
-  }
-
-input:focus,
-select:focus,
-button:focus-visible {
-    border-color: var(--signal);
-    outline: none;
-    box-shadow: 0 0 0 3px #168be821;
+    color: var(--yinmi-text-muted);
   }
 
 button {
@@ -1031,16 +1035,17 @@ button {
     border: 0;
     font: inherit;
     font-weight: 700;
-    border-radius: 8px;
+    border-radius: var(--yinmi-radius-sm);
   }
 
 .primary {
     padding: 0 14px;
     height: 40px;
     border: 1px solid transparent;
+    border-radius: var(--yinmi-radius-pill);
     background: var(--action);
     color: #fff;
-    transition: transform 150ms ease, background 150ms ease;
+    box-shadow: var(--yinmi-shadow-subtle);
   }
 
 .primary:hover:not(:disabled) {
@@ -1051,7 +1056,7 @@ button {
 .hint {
     margin: 8px 0 0;
     line-height: 1.5;
-    color: #83919f;
+    color: var(--yinmi-text-muted);
     font-size: 0.65rem;
   }
 
@@ -1065,27 +1070,31 @@ button {
 .toggle-setting {
     display: flex;
     align-items: center;
-    border: 1px solid #d4dfe8;
+    border: 1px solid var(--yinmi-border);
     cursor: pointer;
     gap: 9px;
     padding: 0 10px;
     height: 42px;
-    border-radius: 8px;
-    background: #fff;
+    border-radius: var(--yinmi-radius-sm);
+    background: var(--yinmi-surface);
+  }
+
+.toggle-setting:hover {
+    border-color: var(--yinmi-primary-soft-hover);
   }
 
 .toggle-setting input {
     flex: 0 0 auto;
     width: 15px;
     height: 15px;
-    accent-color: var(--signal);
+    accent-color: var(--yinmi-primary);
   }
 
 .toggle-setting span {
     display: grid;
     letter-spacing: 0;
     text-transform: none;
-    color: #3c4d5d;
+    color: var(--yinmi-text);
   }
 
 .toggle-setting strong {
@@ -1093,24 +1102,32 @@ button {
   }
 
 .toggle-setting small {
-    color: #8795a2;
+    color: var(--yinmi-text-muted);
     font-size: 0.64rem;
   }
 
 .directory-control button {
-    border: 1px solid #cedae5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--yinmi-border-strong);
     padding: 0 12px;
     white-space: nowrap;
-    border-radius: 8px;
-    background: #fff;
+    border-radius: var(--yinmi-radius-sm);
+    background: var(--yinmi-surface);
     color: var(--signal-dark);
     font-size: 0.72rem;
+  }
+
+.directory-control button:hover:not(:disabled) {
+    border-color: var(--yinmi-primary-soft-hover);
+    background: var(--yinmi-primary-soft);
   }
 
 .directory-message {
     margin: 7px 0 0;
     line-height: 1.45;
-    color: #83919f;
+    color: var(--yinmi-text-muted);
     font-size: 0.66rem;
   }
 
@@ -1153,7 +1170,7 @@ button {
       }
 
   .search-panel {
-        border-radius: 0;
+        border-radius: var(--yinmi-radius-md);
         padding-block: 13px;
       }
 

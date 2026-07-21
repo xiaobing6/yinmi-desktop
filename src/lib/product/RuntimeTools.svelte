@@ -374,7 +374,7 @@
   button {
     cursor: pointer;
     border: 0;
-    border-radius: 3px;
+    border-radius: var(--yinmi-radius-sm);
     font: inherit;
     font-weight: 700;
   }
@@ -389,22 +389,22 @@
     align-items: center;
     gap: 6px;
     min-height: 36px;
-    color: #607487;
+    color: var(--yinmi-text-secondary);
     font-size: 0.72rem;
     white-space: nowrap;
   }
 
   .runtime-error {
     margin: 0;
-    background: #fff0ee;
+    background: var(--yinmi-error-surface);
     padding: 9px 18px;
-    color: #a43e37;
+    color: var(--yinmi-error-foreground);
     font-size: 0.75rem;
   }
 
   .log-drawer footer span {
     margin-right: auto;
-    color: #718091;
+    color: var(--yinmi-text-secondary);
     font-size: 0.68rem;
   }
 
@@ -421,11 +421,6 @@
     font-family: 'Segoe UI Variable Display', 'Microsoft YaHei UI', sans-serif;
   }
 
-  button:focus-visible {
-    outline: 3px solid #168be83d;
-    outline-offset: 2px;
-  }
-
   .logs-button,
   .quiet,
   .update-action,
@@ -433,29 +428,33 @@
     padding: 0 12px;
     white-space: nowrap;
     min-height: 32px;
-    border-radius: 8px;
+    border-radius: var(--yinmi-radius-pill);
     font-size: 0.72rem;
   }
 
   .logs-button {
-    border: 1px solid #cfe0ed;
-    background: #f8fbfd;
-    color: #0876d1;
+    border: 1px solid var(--yinmi-border);
+    background: var(--yinmi-surface-muted);
+    color: var(--yinmi-primary-hover);
   }
 
   .logs-button:hover {
-    border-color: #b7d7ec;
-    background: #edf7fd;
+    border-color: var(--yinmi-primary-soft-hover);
+    background: var(--yinmi-primary-soft);
   }
 
   .update-action {
-    background: #0876d1;
+    background: var(--yinmi-primary-hover);
     color: #fff;
+  }
+
+  .update-action:hover {
+    background: var(--yinmi-primary-pressed);
   }
 
   .quiet {
     background: transparent;
-    color: #718295;
+    color: var(--yinmi-text-secondary);
   }
 
   .update-status {
@@ -464,18 +463,18 @@
     font-size: 0.72rem;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #718295;
+    color: var(--yinmi-text-secondary);
   }
 
   .update-status.ready {
     font-weight: 700;
-    color: #0876d1;
+    color: var(--yinmi-primary-hover);
   }
 
   .update-error {
-    border: 1px solid #efc9c5;
-    background: #fff6f5;
-    color: #bd4e47;
+    border: 1px solid color-mix(in srgb, var(--yinmi-error) 24%, white);
+    background: var(--yinmi-error-surface);
+    color: var(--yinmi-error-foreground);
   }
 
   .log-drawer {
@@ -484,30 +483,30 @@
     height: min(740px, calc(100vh - 32px));
     margin: auto 16px auto auto;
     overflow: hidden;
-    border: 1px solid #d7e5ef;
-    border-radius: 18px;
-    background: #fff;
-    color: #1d1d1f;
-    box-shadow: 0 28px 80px #31556f2b, 0 4px 18px #168be812;
+    border: 1px solid var(--yinmi-border);
+    border-radius: var(--yinmi-radius-lg);
+    background: var(--yinmi-surface);
+    color: var(--yinmi-text);
+    box-shadow: var(--yinmi-shadow-overlay);
   }
 
   .log-drawer::backdrop {
-    background: #46677f42;
+    background: rgba(29, 29, 31, 0.24);
     backdrop-filter: blur(2px);
   }
 
   .log-drawer[open] {
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-    animation: log-drawer-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    animation: log-drawer-in 250ms var(--yinmi-ease);
   }
 
   .log-drawer header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid #dce5ee;
-    background: #fff;
+    border-bottom: 1px solid var(--yinmi-border);
+    background: var(--yinmi-surface);
     padding: 20px 24px 18px;
   }
 
@@ -517,7 +516,7 @@
     font-weight: 700;
     letter-spacing: 0.1em;
     font-family: 'Microsoft YaHei UI', sans-serif;
-    color: #0876d1;
+    color: var(--yinmi-primary-hover);
   }
 
   .close {
@@ -528,9 +527,9 @@
     flex: 0 0 38px;
     place-items: center;
     padding: 0;
-    border: 1px solid #dce9f2;
+    border: 1px solid var(--yinmi-border);
     border-radius: 50%;
-    background: #f2f8fc;
+    background: var(--yinmi-surface-muted);
     color: transparent;
     font-size: 0;
   }
@@ -544,7 +543,7 @@
     width: 12px;
     height: 1.6px;
     border-radius: 999px;
-    background: #587084;
+    background: var(--yinmi-text-secondary);
     transform: translate(-50%, -50%) rotate(45deg);
   }
 
@@ -553,8 +552,8 @@
   }
 
   .close:hover {
-    border-color: #c7dfef;
-    background: #e8f4fb;
+    border-color: var(--yinmi-primary-soft-hover);
+    background: var(--yinmi-primary-soft);
   }
 
   .log-controls {
@@ -562,8 +561,8 @@
     grid-template-columns: 120px 1fr auto;
     align-items: end;
     gap: 10px;
-    border-bottom: 1px solid #dce5ee;
-    background: #f7fbfe;
+    border-bottom: 1px solid var(--yinmi-border);
+    background: var(--yinmi-surface-muted);
     padding: 12px 20px 13px;
   }
 
@@ -571,25 +570,34 @@
   .log-controls input {
     width: 100%;
     height: 36px;
-    border: 1px solid #cedae5;
+    border: 1px solid var(--yinmi-border-strong);
     padding: 0 9px;
-    border-radius: 8px;
-    background: #fff;
-    color: #1d1d1f;
+    border-radius: var(--yinmi-radius-sm);
+    background: var(--yinmi-surface);
+    color: var(--yinmi-text);
+  }
+
+  .log-controls select {
+    appearance: none;
+    background-image: url('./icons/chevron-down.svg');
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 14px 14px;
+    padding-right: 36px;
   }
 
   .log-controls .auto input {
     width: 15px;
     height: 15px;
-    accent-color: #168be8;
+    accent-color: var(--yinmi-primary);
   }
 
   .log-viewport {
     overflow: auto;
     padding: 12px 0;
     font: 12px/1.55 ui-monospace, 'Cascadia Code', Consolas, monospace;
-    background: #f8fbfd;
-    color: #30475a;
+    background: var(--yinmi-surface-muted);
+    color: var(--yinmi-text);
     scrollbar-color: #b9cad7 transparent;
   }
 
@@ -598,7 +606,7 @@
     grid-template-columns: 76px 54px minmax(0, 1fr);
     gap: 8px;
     position: relative;
-    border-bottom: 1px solid #e8f0f5;
+    border-bottom: 1px solid var(--yinmi-border);
     padding: 5px 20px 5px 22px;
   }
 
@@ -610,25 +618,25 @@
     left: 9px;
     width: 2px;
     border-radius: 999px;
-    background: #c4d2dc;
+    background: var(--yinmi-border-strong);
   }
 
   .log-viewport > div:hover {
-    background: #eef7fc;
+    background: var(--yinmi-primary-soft);
   }
 
   .log-viewport time {
-    color: #8294a3;
+    color: var(--yinmi-text-muted);
   }
 
   .log-viewport b {
-    color: #0876d1;
+    color: var(--yinmi-primary-hover);
   }
 
   .log-viewport span {
     overflow-wrap: anywhere;
     white-space: pre-wrap;
-    color: #2d4254;
+    color: var(--yinmi-text);
   }
 
   .log-viewport [data-level='TRACE']::before {
@@ -648,15 +656,15 @@
   }
 
   .log-viewport [data-level='INFO']::before {
-    background: #168be8;
+    background: var(--yinmi-primary);
   }
 
   .log-viewport [data-level='INFO'] b {
-    color: #0876d1;
+    color: var(--yinmi-primary-hover);
   }
 
   .log-viewport .warn {
-    background: #fffaf0;
+    background: var(--yinmi-warning-surface);
   }
 
   .log-viewport .warn::before {
@@ -664,48 +672,48 @@
   }
 
   .log-viewport .warn b {
-    color: #a66b08;
+    color: var(--yinmi-warning);
   }
 
   .log-viewport .error {
-    background: #fff7f6;
+    background: var(--yinmi-error-surface);
   }
 
   .log-viewport .error::before {
-    background: #d75b53;
+    background: var(--yinmi-error);
   }
 
   .log-viewport .error b {
-    color: #c34d46;
+    color: var(--yinmi-error-foreground);
   }
 
   .empty {
     margin: 40px 18px;
     text-align: center;
-    color: #7b8c9a;
+    color: var(--yinmi-text-muted);
   }
 
   .log-drawer footer {
     display: flex;
     align-items: center;
     gap: 8px;
-    border-top: 1px solid #dce5ee;
-    background: #fff;
+    border-top: 1px solid var(--yinmi-border);
+    background: var(--yinmi-surface);
     padding: 11px 20px;
   }
 
   .log-drawer footer button {
     padding: 8px 10px;
     font-size: 0.72rem;
-    border-radius: 8px;
-    border: 1px solid #d6e6f1;
-    background: #f3f9fd;
-    color: #0876d1;
+    border-radius: var(--yinmi-radius-pill);
+    border: 1px solid var(--yinmi-border);
+    background: var(--yinmi-surface-muted);
+    color: var(--yinmi-primary-hover);
   }
 
   .log-drawer footer button:hover {
-    border-color: #bcd9eb;
-    background: #eaf5fc;
+    border-color: var(--yinmi-primary-soft-hover);
+    background: var(--yinmi-primary-soft);
   }
 
   @keyframes log-drawer-in {

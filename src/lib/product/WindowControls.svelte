@@ -88,6 +88,7 @@
     gap: 2px;
     height: 32px;
     margin-left: 4px;
+    margin-right: var(--window-controls-edge-offset, 0px);
     user-select: none;
   }
   button {
@@ -97,28 +98,28 @@
     place-items: center;
     cursor: default;
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--yinmi-radius-sm);
     background: transparent;
     padding: 0;
-    color: #5b6c7a;
+    color: var(--yinmi-text-secondary);
   }
   button:hover {
-    background: #eaf4fa;
-    color: #173c58;
+    background: var(--yinmi-surface-muted);
+    color: var(--yinmi-text);
   }
   button:active {
-    background: #dcecf7;
+    background: var(--yinmi-border);
   }
   button:focus-visible {
-    outline: 2px solid #168be84d;
+    outline: 2px solid var(--yinmi-primary);
     outline-offset: -2px;
   }
   .close-window:hover {
-    background: #e6534d;
+    background: var(--yinmi-error);
     color: #fff;
   }
   .close-window:active {
-    background: #c93f3a;
+    background: #d70015;
   }
   svg {
     display: block;
