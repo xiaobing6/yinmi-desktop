@@ -610,10 +610,11 @@
         />
         <span><strong>下载歌词</strong><small>保存原始 LRC</small></span>
       </label>
-      <label class="directory-setting">
-        <span>保存位置</span>
+      <div class="directory-setting">
+        <label for="download-directory">保存位置</label>
         <span class="directory-control">
           <input
+            id="download-directory"
             bind:value={baseDirectory}
             disabled={downloading || directoryLoading}
             placeholder={directoryLoading
@@ -629,7 +630,7 @@
             onclick={() => void chooseDirectory()}>选择</button
           >
         </span>
-      </label>
+      </div>
     </div>
     <p
       id="directory-message"
@@ -702,6 +703,11 @@ button:disabled {
 .directory-setting {
     min-width: 0;
     grid-column: 1 / -1;
+  }
+
+.directory-setting {
+    display: grid;
+    gap: 6px;
   }
 
 .directory-message.directory-error {
@@ -980,7 +986,7 @@ form label:nth-of-type(3) {
 
 form label > span,
 .quality-setting > span,
-.directory-setting > span:first-child {
+.directory-setting > label {
     letter-spacing: 0.02em;
     color: #566879;
     font-size: 0.69rem;
@@ -1176,7 +1182,8 @@ button {
         gap: 8px 9px;
       }
 
-  label {
+  label,
+  .directory-setting {
         gap: 4px;
       }
 
