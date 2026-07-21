@@ -501,7 +501,7 @@
       <span>{downloading ? '正在下载' : searching ? '正在搜索' : '准备就绪'}</span>
     </div>
     <RuntimeTools />
-    <span class="version">v{appVersion || '0.1.3'}</span>
+    <span class="version">v{appVersion || '0.1.4'}</span>
     <WindowControls />
   </header>
 
