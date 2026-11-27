@@ -68,7 +68,9 @@ enum SearchError {
     KeywordTooLong,
     #[error("搜索数量必须在 1 到 1000 之间")]
     InvalidCount,
-    #[error("签名页面初始化或签名失败")]
+    #[error("GD 音乐台签名服务初始化失败，请重试或查看运行日志")]
+    SignatureInitialization,
+    #[error("GD 音乐台请求签名失败，请重试或查看运行日志")]
     Signature,
     #[error("音乐接口网络请求失败")]
     Network,
@@ -122,7 +124,7 @@ impl From<SearchError> for MusicCommandError {
             SearchError::EmptyKeyword | SearchError::KeywordTooLong | SearchError::InvalidCount => {
                 "MUSIC_INPUT"
             }
-            SearchError::Signature => "MUSIC_SIGNATURE",
+            SearchError::SignatureInitialization | SearchError::Signature => "MUSIC_SIGNATURE",
             SearchError::Network | SearchError::Http(_) | SearchError::ResponseTooLarge => {
                 "MUSIC_HTTP"
             }
@@ -245,7 +247,10 @@ impl MusicSearchService {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
 
-        self.runtime.ensure_initialized().await?;
+        self.runtime
+            .ensure_initialized()
+            .await
+            .map_err(|_| SearchError::SignatureInitialization)?;
         let mut pagination = PaginationProbe::new(usize::from(count.get()), MAX_SEARCH_PAGES);
         let page_size = SearchPageSize::for_target(count);
         let name = EncodedComponent::encode(&keyword);

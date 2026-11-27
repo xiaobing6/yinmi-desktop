@@ -221,6 +221,7 @@ pub struct SignatureRuntime {
     active: AtomicBool,
     shutdown_requested: ShutdownAdmissionGate,
     teardown_verified_for_exit: AtomicBool,
+    initialization: Arc<tokio::sync::Mutex<()>>,
     state: tokio::sync::Mutex<RuntimeState>,
 }
 
@@ -402,6 +403,7 @@ impl SignatureRuntime {
             active: AtomicBool::new(false),
             shutdown_requested: ShutdownAdmissionGate::default(),
             teardown_verified_for_exit: AtomicBool::new(false),
+            initialization: Arc::new(tokio::sync::Mutex::new(())),
             state: tokio::sync::Mutex::new(RuntimeState::Idle),
         }
     }
@@ -410,7 +412,8 @@ impl SignatureRuntime {
         self.initialize_with_profile(RawHostProfile::live()).await
     }
 
-    pub async fn ensure_initialized(&self) -> Result<(), SignatureError> {
+    pub async fn ensure_initialized(self: &Arc<Self>) -> Result<(), SignatureError> {
+        let initialization = Arc::clone(&self.initialization).lock_owned().await;
         {
             let state = self.state.lock().await;
             match &*state {
@@ -422,7 +425,18 @@ impl SignatureRuntime {
                 _ => return Err(SignatureError::NotReady),
             }
         }
-        self.initialize().await.map(|_| ())
+
+        // A cancelled download may stop waiting while the signature host still needs cleanup.
+        let runtime = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            let _initialization = initialization;
+            runtime.initialize().await.map(|_| ())
+        })
+        .await
+        .map_err(|error| {
+            log::error!("GD 音乐台签名初始化任务异常退出：{error}");
+            SignatureError::Webview(format!("signature initialization task failed: {error}"))
+        })?
     }
 
     pub(crate) async fn initialize_with_profile(
@@ -464,7 +478,10 @@ impl SignatureRuntime {
             .await;
         match result {
             Ok(report) => Ok(report),
-            Err(error) => Err(self.poison_and_destroy(ticket, error).await),
+            Err(error) => {
+                log::warn!("GD 音乐台签名页面初始化失败：{error}");
+                Err(self.poison_and_destroy(ticket, error).await)
+            }
         }
     }
 
@@ -667,7 +684,10 @@ impl SignatureRuntime {
         };
         match result {
             Ok(value) => Ok(value),
-            Err(error) => Err(self.poison_and_destroy(ticket, error).await),
+            Err(error) => {
+                log::warn!("GD 音乐台请求签名失败：{error}");
+                Err(self.poison_and_destroy(ticket, error).await)
+            }
         }
     }
 

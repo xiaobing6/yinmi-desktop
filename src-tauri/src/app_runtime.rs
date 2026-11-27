@@ -208,10 +208,7 @@ async fn wait_for_update_download(state: &ProductExitState) -> Result<(), String
 }
 
 #[tauri::command]
-pub async fn app_initialize(
-    app: AppHandle,
-    runtime: State<'_, Arc<SignatureRuntime>>,
-) -> Result<StartupReport, String> {
+pub async fn app_initialize(app: AppHandle) -> Result<StartupReport, String> {
     emit_startup_progress(&app, "log", "运行日志", "working", None);
     let log_directory = app
         .path()
@@ -236,12 +233,6 @@ pub async fn app_initialize(
         "done",
         webview_version.clone(),
     );
-    emit_startup_progress(&app, "signature", "音乐签名环境", "working", None);
-    runtime
-        .ensure_initialized()
-        .await
-        .map_err(|_| "INIT_SIGNATURE：签名运行环境初始化失败".to_owned())?;
-    emit_startup_progress(&app, "signature", "音乐签名环境", "done", None);
     emit_startup_progress(&app, "source", "固定音源", "done", Some("10 个".to_owned()));
     emit_startup_progress(&app, "download", "下载引擎", "working", None);
     let default_directory = app

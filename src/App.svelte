@@ -27,7 +27,6 @@
   const freshStages = (): StartupStage[] => [
     { id: 'log', label: '运行日志', state: 'pending', detail: null },
     { id: 'webview', label: '系统 WebView', state: 'pending', detail: null },
-    { id: 'signature', label: '音乐签名环境', state: 'pending', detail: null },
     { id: 'source', label: '固定音源', state: 'pending', detail: null },
     { id: 'download', label: '下载引擎', state: 'pending', detail: null },
     { id: 'update', label: '应用更新', state: 'pending', detail: null },
@@ -113,8 +112,8 @@
         <div class="startup-status">
           <i aria-hidden="true"></i>
           <div>
-            <strong>{startupError ? '启动遇到问题' : '正在准备音乐服务…'}</strong>
-            <span>{startupError || (starting ? '正在连接所需组件，请稍候' : '启动未完成')}</span>
+            <strong>{startupError ? '启动遇到问题' : '正在启动音觅…'}</strong>
+            <span>{startupError || (starting ? '正在检查运行环境，请稍候' : '启动未完成')}</span>
           </div>
         </div>
         <ul class="startup-stages" aria-label="启动进度">
